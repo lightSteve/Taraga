@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import briefing, themes, market
+from routers import briefing, themes, market, insight, watchlist, calendar, system
 
 app = FastAPI(
     title="Taraga API",
@@ -21,6 +21,10 @@ app.add_middleware(
 app.include_router(briefing.router, prefix="/api/v1/briefing", tags=["Briefing"])
 app.include_router(themes.router, prefix="/api/v1/themes", tags=["Themes"])
 app.include_router(market.router, prefix="/api/v1/market", tags=["Market"])
+app.include_router(insight.router, prefix="/api/v1/insight", tags=["Insight"])
+app.include_router(watchlist.router, prefix="/api/v1/watchlist", tags=["Watchlist"])
+app.include_router(calendar.router, prefix="/api/v1/calendar", tags=["Calendar"])
+app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
 
 
 @app.get("/")

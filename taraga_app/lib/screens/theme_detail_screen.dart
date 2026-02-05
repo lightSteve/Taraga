@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/theme.dart';
 import '../models/stock.dart';
+import '../models/value_chain.dart';
 import '../services/api_service.dart';
 
 /// Theme detail screen showing Korean stocks for a selected theme
@@ -19,6 +20,7 @@ class ThemeDetailScreen extends StatefulWidget {
 class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
   final ApiService _apiService = ApiService();
   List<Stock> _stocks = [];
+  ValueChainResponse? _valueChain;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -36,8 +38,11 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
 
     try {
       final stocks = await _apiService.getKoreanStocksByTheme(widget.theme.id);
+      final valueChain = await _apiService.getValueChain(widget.theme.id);
+      
       setState(() {
         _stocks = stocks;
+        _valueChain = valueChain;
         _isLoading = false;
       });
     } catch (e) {
@@ -129,6 +134,9 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
               ],
             ),
           ),
+          
+          if (!_isLoading && _valueChain != null)
+            _buildValueChainMap(),
 
           // Stocks List
           Expanded(
@@ -327,6 +335,89 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildValueChainMap() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1F3A),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.purple.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '🔗 Value Chain Map',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (_valueChain?.usDrivers.isNotEmpty == true)
+            ..._valueChain!.usDrivers.entries.map((entry) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   Container(
+                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                     decoration: BoxDecoration(
+                       color: Colors.purple.withOpacity(0.2),
+                       borderRadius: BorderRadius.circular(8),
+                     ),
+                     child: Text(
+                       '🇺🇸 ${entry.key} (Driver)',
+                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                     ),
+                   ),
+                   const SizedBox(height: 8),
+                   Padding(
+                     padding: const EdgeInsets.only(left: 16.0),
+                     child: Container(
+                       padding: const EdgeInsets.only(left: 16),
+                       decoration: BoxDecoration(
+                         border: Border(left: BorderSide(color: Colors.purple.withOpacity(0.3), width: 2)),
+                       ),
+                       child: Column(
+                         children: entry.value.map((item) => Padding(
+                           padding: const EdgeInsets.only(bottom: 8.0),
+                           child: Row(
+                             children: [
+                               const Icon(Icons.subdirectory_arrow_right, color: Colors.white54, size: 16),
+                               const SizedBox(width: 8),
+                               Expanded(
+                                 child: Column(
+                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                   children: [
+                                     Text(
+                                       '🇰🇷 ${item.krStock}', 
+                                       style: const TextStyle(color: Colors.white, fontSize: 14),
+                                     ),
+                                     Text(
+                                       '${item.relation}: ${item.description}',
+                                       style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                                     ),
+                                   ],
+                                 ),
+                               ),
+                             ],
+                           ),
+                         )).toList(),
+                       ),
+                     ),
+                   ),
+                   const SizedBox(height: 16),
+                ],
+              );
+            }).toList(),
         ],
       ),
     );

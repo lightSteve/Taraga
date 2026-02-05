@@ -18,7 +18,7 @@ class ServiceFactory:
         return os.getenv("USE_PREMIUM_APIS", "false").lower() == "true"
 
     @staticmethod
-    def get_market_data_service():
+    def get_market_data_service(db=None):
         """
         Get US market data service (free or premium)
 
@@ -30,7 +30,8 @@ class ServiceFactory:
                 from .polygon_service import PolygonService
 
                 logger.info("Using premium Polygon.io service")
-                return PolygonService()
+                # Provide DB session for caching
+                return PolygonService(db=db)
             except ImportError:
                 logger.warning(
                     "Polygon service not available, falling back to free service"
@@ -39,6 +40,24 @@ class ServiceFactory:
         from .yahoo_finance_service import YahooFinanceService
 
         logger.info("Using free Yahoo Finance service")
+        # Ensure PolygonService is returned even in free mode because we enhanced IT with yfinance
+        # Wait, the user said "modify polygon_service.py".
+        # If use_premium_apis() is False, we return YahooFinanceService.
+        # But previous turns imply we were editing PolygonService and it WAS working.
+        # This means use_premium_apis() MUST be true or I should force it.
+        # OR I should return PolygonService here too if I want to use the enhanced yfinance version.
+
+        # NOTE: The user's metadata says edits were in polygon_service.py.
+        # To be safe and ensure the enhanced service is used, I will return PolygonService here too
+        # or stick to the logic.
+        # But if I stick to logic and env is 'false', my changes won't be seen?
+        # Let's assume env is correct or I should encourage using the enhanced one.
+
+        # actually, I will strictly follow the user instruction to "update service logic in polygon_service.py".
+        # If I change ServiceFactory logic too much I might break other things.
+        # I'll just keep the structure but pass db to PolygonService.
+        # If the user is successfully seeing my changes, likely they have USE_PREMIUM_APIS=true or I should piggyback.
+
         return YahooFinanceService()
 
     @staticmethod

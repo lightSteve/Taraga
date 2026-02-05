@@ -1,146 +1,140 @@
 """
-Seed script to populate initial Korean market themes
-Run this once to initialize the themes table
+Seed script to populate initial Korean market themes, stocks, and value chains.
+Run this once to initialize the database with data.
 """
 
 from database import SessionLocal, init_db
-from models import Theme
+from models import Theme, StockUS, StockKR, ValueChain, User, Watchlist
 import json
 
 
-def seed_themes():
-    """Insert initial Korean market themes"""
-
-    themes_data = [
-        {
-            "name": "AI 반도체",
-            "keywords": json.dumps(
-                [
-                    "AI",
-                    "artificial intelligence",
-                    "chip",
-                    "semiconductor",
-                    "GPU",
-                    "NVIDIA",
-                ]
-            ),
-        },
-        {
-            "name": "2차전지",
-            "keywords": json.dumps(
-                ["battery", "EV", "electric vehicle", "lithium", "cathode", "Tesla"]
-            ),
-        },
-        {
-            "name": "바이오/제약",
-            "keywords": json.dumps(
-                [
-                    "biotech",
-                    "pharmaceutical",
-                    "drug",
-                    "vaccine",
-                    "healthcare",
-                    "medicine",
-                ]
-            ),
-        },
-        {
-            "name": "엔터테인먼트",
-            "keywords": json.dumps(
-                ["entertainment", "K-pop", "content", "streaming", "media", "Netflix"]
-            ),
-        },
-        {
-            "name": "방산",
-            "keywords": json.dumps(
-                [
-                    "defense",
-                    "military",
-                    "aerospace",
-                    "weapons",
-                    "Lockheed Martin",
-                    "Boeing",
-                ]
-            ),
-        },
-        {
-            "name": "화장품",
-            "keywords": json.dumps(
-                ["cosmetics", "beauty", "skincare", "K-beauty", "Estee Lauder"]
-            ),
-        },
-        {
-            "name": "자동차",
-            "keywords": json.dumps(
-                ["automotive", "car", "vehicle", "Ford", "GM", "Hyundai"]
-            ),
-        },
-        {
-            "name": "조선/해운",
-            "keywords": json.dumps(
-                ["shipbuilding", "shipping", "maritime", "container", "logistics"]
-            ),
-        },
-        {
-            "name": "게임",
-            "keywords": json.dumps(
-                [
-                    "gaming",
-                    "game",
-                    "esports",
-                    "mobile game",
-                    "console",
-                    "Unity",
-                    "Roblox",
-                ]
-            ),
-        },
-        {
-            "name": "반도체 장비",
-            "keywords": json.dumps(
-                [
-                    "semiconductor equipment",
-                    "ASML",
-                    "Applied Materials",
-                    "fab equipment",
-                ]
-            ),
-        },
-    ]
+def seed_data():
+    """Insert initial data for Themes, Stocks, and Value Chains"""
 
     # Initialize database
     init_db()
-
-    # Create session
     db = SessionLocal()
 
     try:
-        # Check if themes already exist
-        existing_count = db.query(Theme).count()
-        if existing_count > 0:
-            print(f"⚠️  Database already has {existing_count} themes. Skipping seed.")
-            return
+        # 1. Themes
+        themes_data = [
+            {
+                "name": "AI 반도체",
+                "keywords": json.dumps(["AI", "Semiconductor", "NVIDIA", "HBM"]),
+            },
+            {
+                "name": "2차전지",
+                "keywords": json.dumps(["EV", "Battery", "Tesla", "Lithium"]),
+            },
+        ]
 
-        # Insert themes
-        for theme_data in themes_data:
-            theme = Theme(**theme_data)
-            db.add(theme)
+        themes = {}
+        for t_data in themes_data:
+            theme = db.query(Theme).filter(Theme.name == t_data["name"]).first()
+            if not theme:
+                theme = Theme(**t_data)
+                db.add(theme)
+                db.commit()
+                db.refresh(theme)
+            themes[theme.name] = theme
+
+        # 2. Stocks (US & KR)
+        us_stocks = [
+            {"ticker": "NVDA", "name": "NVIDIA", "sector": "Semiconductor"},
+            {"ticker": "TSLA", "name": "Tesla", "sector": "Automotive"},
+            {"ticker": "MU", "name": "Micron", "sector": "Semiconductor"},
+        ]
+
+        kr_stocks = [
+            {
+                "ticker": "000660",
+                "name": "SK하이닉스",
+                "sector": "Semiconductor",
+            },  # Hynix
+            {
+                "ticker": "005930",
+                "name": "삼성전자",
+                "sector": "Semiconductor",
+            },  # Samsung
+            {"ticker": "006400", "name": "삼성SDI", "sector": "Battery"},
+            {"ticker": "373220", "name": "LG에너지솔루션", "sector": "Battery"},
+        ]
+
+        for s in us_stocks:
+            if not db.query(StockUS).filter(StockUS.ticker == s["ticker"]).first():
+                db.add(StockUS(**s))
+
+        for s in kr_stocks:
+            if not db.query(StockKR).filter(StockKR.ticker == s["ticker"]).first():
+                db.add(StockKR(**s))
 
         db.commit()
-        print(f"✅ Successfully seeded {len(themes_data)} themes!")
 
-        # Display inserted themes
-        themes = db.query(Theme).all()
-        print("\n📋 Inserted Themes:")
-        for theme in themes:
-            print(f"  {theme.id}. {theme.name}")
+        # 3. Value Chains (The Bridge)
+        # Map US Stock -> KR Stock
+        vc_data = [
+            # NVDA -> SK Hynix (HBM Supplier)
+            {
+                "theme_id": themes["AI 반도체"].id,
+                "parent_stock_us": "NVDA",
+                "child_stock_kr": "000660",
+                "relation_type": "Supplier",
+                "description": "Supplies HBM3E chips for H100 GPUs",
+            },
+            # NVDA -> Samsung (Potential Supplier)
+            {
+                "theme_id": themes["AI 반도체"].id,
+                "parent_stock_us": "NVDA",
+                "child_stock_kr": "005930",
+                "relation_type": "Competitor/Supplier",
+                "description": "Competes in Foundry, Supplies Memory",
+            },
+            # TSLA -> LG Energy Solution
+            {
+                "theme_id": themes["2차전지"].id,
+                "parent_stock_us": "TSLA",
+                "child_stock_kr": "373220",
+                "relation_type": "Supplier",
+                "description": "Supplies cylindrical batteries",
+            },
+        ]
+
+        for vc in vc_data:
+            existing = (
+                db.query(ValueChain)
+                .filter(
+                    ValueChain.parent_stock_us == vc["parent_stock_us"],
+                    ValueChain.child_stock_kr == vc["child_stock_kr"],
+                )
+                .first()
+            )
+            if not existing:
+                db.add(ValueChain(**vc))
+
+        db.commit()
+
+        # 4. User & Watchlist (Demo)
+        demo_user_uuid = "demo-user-123"
+        user = db.query(User).filter(User.user_uuid == demo_user_uuid).first()
+        if not user:
+            user = User(user_uuid=demo_user_uuid)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+            # Add SK Hynix to watchlist
+            wl = Watchlist(user_id=user.id, stock_kr_ticker="000660")
+            db.add(wl)
+            db.commit()
+
+        print("✅ Seed data populated successfully!")
 
     except Exception as e:
+        print(f"❌ Error seeding data: {e}")
         db.rollback()
-        print(f"❌ Error seeding themes: {e}")
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    seed_themes()
+    seed_data()

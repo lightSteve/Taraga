@@ -1,187 +1,146 @@
-"""
-Correlation Engine: The Bridge between US and Korean Markets
-This module orchestrates the entire analysis pipeline
-"""
-
-from datetime import datetime, date
 from sqlalchemy.orm import Session
-import json
-
-from database import SessionLocal
-from models import Theme, DailyBriefing, RecommendedTheme
-from services.service_factory import ServiceFactory
+from models import Theme, ValueChain, Watchlist
 
 
 class CorrelationEngine:
-    """Main logic engine that connects US market events to Korean stock themes"""
+    def __init__(self, db: Session):
+        self.db = db
 
-    def __init__(self):
-        # Use service factory to get appropriate services (free or premium)
-        self.market_service = ServiceFactory.get_market_data_service()
-        self.news_service = ServiceFactory.get_news_service()
-        self.ai_service = ServiceFactory.get_ai_service()
-
-    def run_daily_analysis(self, analysis_date: date = None):
+    def analyze_market_impact(self, driving_themes: list[dict], user_id: int = None):
         """
-        Run the complete daily analysis pipeline
+        Takes US market themes and maps them to KR stocks.
+        If user_id is provided, filters for stocks in User's Watchlist.
 
-        Steps:
-        1. Fetch US market data (indices, top gainers)
-        2. Fetch US news headlines
-        3. Get Korean themes from database
-        4. Send to AI for analysis
-        5. Save results to database
+        :param driving_themes: List of dicts e.g. [{"theme_name": "AI Semiconductor", "us_driver": "NVDA", "reason": "Earnings Beat"}]
+        :param user_id: Optional User ID for personalization
+        :return: Dict with 'general_recommendations' and 'personal_matches'
         """
+        results = {"general_recommendations": [], "personal_matches": []}
 
-        if analysis_date is None:
-            analysis_date = date.today()
+        user_watchlist_tickers = set()
+        if user_id:
+            watchlist_items = (
+                self.db.query(Watchlist).filter(Watchlist.user_id == user_id).all()
+            )
+            user_watchlist_tickers = {item.stock_kr_ticker for item in watchlist_items}
 
-        print(f"🚀 Starting analysis for {analysis_date}")
+        for item in driving_themes:
+            theme_name = item["theme_name"]
+            us_driver_ticker = item["us_driver"]
+            reason = item["reason"]
 
-        # Step 1: Fetch US market data
-        print("📊 Fetching US market data...")
-        market_indices = self.market_service.get_market_indices()
-        top_gainers = self.market_service.get_top_gainers(limit=10)
-
-        # Step 2: Fetch news
-        print("📰 Fetching US news...")
-        news_articles = self.news_service.get_market_news(limit=10)
-
-        # Step 3: Get Korean themes
-        print("🏷️  Loading Korean themes...")
-        db = SessionLocal()
-        themes = db.query(Theme).all()
-
-        themes_data = [
-            {
-                "id": theme.id,
-                "name": theme.name,
-                "keywords": json.loads(theme.keywords) if theme.keywords else [],
-            }
-            for theme in themes
-        ]
-
-        # Step 4: AI Analysis (template-based or OpenAI)
-        print("🤖 Running correlation analysis...")
-        recommendations = self.ai_service.analyze_market_correlation(
-            us_gainers=top_gainers, news_articles=news_articles, themes=themes_data
-        )
-
-        # Generate summary
-        us_summary = self.ai_service.generate_daily_summary(
-            us_indices=market_indices, top_gainers=top_gainers, news=news_articles
-        )
-
-        # Determine sentiment based on indices
-        market_sentiment = self._determine_sentiment(market_indices)
-
-        analysis_result = {
-            "us_summary": us_summary,
-            "market_sentiment": market_sentiment,
-            "recommended_themes": recommendations,
-        }
-
-        # Step 5: Save to database
-        print("💾 Saving results to database...")
-        self._save_results(db, analysis_date, analysis_result, market_indices)
-
-        db.close()
-
-        print("✅ Analysis complete!")
-        return analysis_result
-
-    def _determine_sentiment(self, indices: dict) -> str:
-        """Determine market sentiment from indices performance"""
-        if not indices:
-            return "Neutral"
-
-        # Calculate average change
-        changes = [data.get("change_percent", 0) for data in indices.values()]
-        avg_change = sum(changes) / len(changes) if changes else 0
-
-        if avg_change > 1.0:
-            return "Greedy"
-        elif avg_change < -1.0:
-            return "Fearful"
-        else:
-            return "Neutral"
-
-    def _save_results(
-        self, db: Session, analysis_date: date, analysis: dict, market_data: dict
-    ):
-        """Save analysis results to database"""
-
-        # Save daily briefing
-        briefing = DailyBriefing(
-            date=analysis_date,
-            us_summary=analysis.get("us_summary", ""),
-            market_sentiment=analysis.get("market_sentiment", "Neutral"),
-            key_indices_json=market_data.get("indices", {}),
-        )
-
-        # Check if briefing already exists
-        existing_briefing = (
-            db.query(DailyBriefing).filter_by(date=analysis_date).first()
-        )
-        if existing_briefing:
-            db.delete(existing_briefing)
-
-        db.add(briefing)
-        db.commit()
-
-        # Save recommended themes
-        recommended = analysis.get("recommended_themes", [])
-
-        # Delete existing recommendations for this date
-        db.query(RecommendedTheme).filter_by(date=analysis_date).delete()
-
-        for rec in recommended:
-            # Find theme by name
-            theme = db.query(Theme).filter_by(name=rec["theme_name"]).first()
+            # 1. Find the Theme
+            theme = self.db.query(Theme).filter(Theme.name == theme_name).first()
             if not theme:
-                print(f"⚠️  Theme '{rec['theme_name']}' not found, skipping...")
                 continue
 
-            # Get first related US stock if available
-            related_stocks = rec.get("related_us_stocks", [])
-            related_us_stock = related_stocks[0] if related_stocks else None
-
-            recommendation = RecommendedTheme(
-                date=analysis_date,
-                theme_id=theme.id,
-                reason=rec.get("reason", ""),
-                related_us_stock=related_us_stock,
-                impact_score=rec.get("impact_score", 5),
+            # 2. Find Value Chain connections
+            # Query Logic: Find connections where parent is the US driver OR theme matches
+            # Ideally we want specific US Stock -> KR Stock links
+            connections = (
+                self.db.query(ValueChain)
+                .filter(
+                    ValueChain.theme_id == theme.id,
+                    ValueChain.parent_stock_us == us_driver_ticker,
+                )
+                .all()
             )
 
-            db.add(recommendation)
+            for conn in connections:
+                rec_data = {
+                    "theme": theme.name,
+                    "us_driver": us_driver_ticker,
+                    "kr_stock": conn.child_stock_kr,
+                    "relation": conn.relation_type,
+                    "description": conn.description,
+                    "reason": reason,
+                }
 
-        db.commit()
-        print(f"💾 Saved {len(recommended)} theme recommendations")
+                results["general_recommendations"].append(rec_data)
 
+                # 3. Check Personalization
+                if conn.child_stock_kr in user_watchlist_tickers:
+                    # Grouping Logic
+                    theme_key = theme.name
+
+                    # Check if group already exists
+                    existing_group = next(
+                        (
+                            g
+                            for g in results["personal_matches"]
+                            if g["theme_name"] == theme_key
+                        ),
+                        None,
+                    )
+
+                    if not existing_group:
+                        existing_group = {
+                            "theme_name": theme.name,
+                            "us_change_percent": 2.5
+                            if "AI" in theme.name
+                            else -1.2,  # Mock logic for now
+                            "reason": reason,
+                            "my_stocks": [],
+                        }
+                        results["personal_matches"].append(existing_group)
+
+                    # Add stock to group
+                    if conn.kr_stock:
+                        stock_name = conn.kr_stock.name
+                    else:
+                        stock_name = conn.child_stock_kr  # Fallback to ticker
+
+                    existing_group["my_stocks"].append(
+                        {
+                            "ticker": conn.child_stock_kr,
+                            "name": stock_name,
+                            "relation": conn.relation_type,
+                            "expected_flow": "UP",  # Mock logic
+                        }
+                    )
+
+        return results
+
+    def get_value_chain_tree(self, theme_id: int):
+        """Returns hierarchical view for a theme"""
+        theme = self.db.query(Theme).filter(Theme.id == theme_id).first()
+        if not theme:
+            return None
+
+        chains = self.db.query(ValueChain).filter(ValueChain.theme_id == theme_id).all()
+
+        tree = {"theme": theme.name, "us_drivers": {}}
+
+        for chain in chains:
+            if chain.parent_stock_us not in tree["us_drivers"]:
+                tree["us_drivers"][chain.parent_stock_us] = []
+
+            tree["us_drivers"][chain.parent_stock_us].append(
+                {
+                    "kr_stock": chain.child_stock_kr,
+                    "relation": chain.relation_type,
+                    "description": chain.description,
+                }
+            )
+
+        return tree
 
     def get_us_impact_for_kr_symbol(self, kr_symbol: str) -> dict:
-        """Simple rule-based impact estimation for a given Korean symbol using US top gainers and theme keywords.
-
-        Returns a dict with summary and matched themes or an empty result if nothing matched.
-        """
+        """Simple rule-based impact estimation for a given Korean symbol using US top gainers and theme keywords."""
         try:
             top_gainers = self.market_service.get_top_gainers(limit=50)
         except Exception:
             top_gainers = []
 
-        # Load themes from DB
         db = SessionLocal()
         themes = db.query(Theme).all()
         db.close()
 
-        # Build a simple keyword->theme map
         theme_map = []
         for theme in themes:
             keywords = json.loads(theme.keywords) if theme.keywords else []
             theme_map.append({"name": theme.name, "keywords": keywords})
 
-        # Check top gainers for keyword matches
         matched = []
         for g in top_gainers:
             g_name = g.get("ticker") or g.get("symbol") or g.get("name", "")
@@ -199,7 +158,6 @@ class CorrelationEngine:
 
 
 if __name__ == "__main__":
-    # Test the correlation engine
     engine = CorrelationEngine()
     result = engine.run_daily_analysis()
     print("\n📋 Analysis Result:")
