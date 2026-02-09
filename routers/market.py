@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from services.service_factory import ServiceFactory
+from logic.correlation_engine import CorrelationEngine
 
 router = APIRouter()
 
@@ -40,5 +41,16 @@ def get_service_status():
     try:
         status = ServiceFactory.get_service_status()
         return {"status": "success", "data": status}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.get("/watchlist/{symbol}/us-impact")
+def get_watchlist_us_impact(symbol: str):
+    """Estimate potential US market impact for a given Korean symbol (simple rule-based stub)."""
+    try:
+        engine = CorrelationEngine()
+        result = engine.get_us_impact_for_kr_symbol(symbol)
+        return {"status": "success", "data": result}
     except Exception as e:
         return {"status": "error", "message": str(e)}
