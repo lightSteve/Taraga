@@ -160,6 +160,44 @@ class CorrelationEngine:
         print(f"💾 Saved {len(recommended)} theme recommendations")
 
 
+    def get_us_impact_for_kr_symbol(self, kr_symbol: str) -> dict:
+        """Simple rule-based impact estimation for a given Korean symbol using US top gainers and theme keywords.
+
+        Returns a dict with summary and matched themes or an empty result if nothing matched.
+        """
+        try:
+            top_gainers = self.market_service.get_top_gainers(limit=50)
+        except Exception:
+            top_gainers = []
+
+        # Load themes from DB
+        db = SessionLocal()
+        themes = db.query(Theme).all()
+        db.close()
+
+        # Build a simple keyword->theme map
+        theme_map = []
+        for theme in themes:
+            keywords = json.loads(theme.keywords) if theme.keywords else []
+            theme_map.append({"name": theme.name, "keywords": keywords})
+
+        # Check top gainers for keyword matches
+        matched = []
+        for g in top_gainers:
+            g_name = g.get("ticker") or g.get("symbol") or g.get("name", "")
+            g_name_lower = g_name.lower()
+            for t in theme_map:
+                for kw in t["keywords"]:
+                    if kw.lower() in g_name_lower:
+                        matched.append({"us_gainer": g_name, "theme": t["name"]})
+
+        summary = "No clear US-driven impact detected for this symbol."
+        if matched:
+            summary = f"Detected {len(matched)} potential US->KR links."
+
+        return {"symbol": kr_symbol, "summary": summary, "matches": matched}
+
+
 if __name__ == "__main__":
     # Test the correlation engine
     engine = CorrelationEngine()
