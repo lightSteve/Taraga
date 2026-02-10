@@ -142,6 +142,99 @@ flutter run -d chrome
 
 **Note:** Make sure the backend server is running at `http://localhost:8000` before starting the Flutter app.
 
+### Testing the Integration
+
+1. **Test the backend API**
+
+```bash
+# Check health endpoint
+curl http://localhost:8000/health
+
+# View API documentation
+open http://localhost:8000/docs  # macOS
+# or
+xdg-open http://localhost:8000/docs  # Linux
+```
+
+2. **Run daily analysis to populate data**
+
+```bash
+python run_daily_analysis.py
+```
+
+This will:
+- Fetch US market data
+- Generate AI analysis
+- Create theme recommendations
+- Populate the database with today's briefing
+
+3. **Test Flutter app**
+
+Once the backend is running and has data, launch the Flutter app. It will automatically connect to `http://localhost:8000` and display:
+- Daily US market briefing
+- Recommended Korean themes
+- Theme details
+
+### Error Handling
+
+The application includes comprehensive error handling:
+
+**Backend (FastAPI):**
+- Global exception handler for unhandled errors
+- Database error handling with SQLAlchemy
+- HTTP status codes (404 for not found, 500 for server errors)
+- Structured error responses with detailed messages
+- Logging for debugging and monitoring
+
+**Flutter App:**
+- API connection error detection
+- User-friendly error messages
+- Retry functionality
+- Loading states and indicators
+- Graceful handling of missing data
+
+### Troubleshooting
+
+**Backend Issues:**
+
+1. **"No briefing found" error**
+   - Run `python run_daily_analysis.py` to generate today's data
+   - Check that Docker containers are running: `docker-compose ps`
+
+2. **Database connection error**
+   - Ensure PostgreSQL is running: `docker-compose up -d`
+   - Check database credentials in `.env` file
+
+3. **API key errors**
+   - Verify all API keys are set in `.env` file
+   - Check that keys are valid and have proper permissions
+
+**Flutter App Issues:**
+
+1. **"Backend server is not responding"**
+   - Verify backend is running: `curl http://localhost:8000/health`
+   - Check firewall settings
+   - Ensure correct API URL in `lib/services/api_service.dart`
+
+2. **Build errors**
+   - Run `flutter pub get` to refresh dependencies
+   - Try `flutter clean` then rebuild
+
+### Production Deployment
+
+For production deployment:
+
+1. **Backend:**
+   - Set `allow_origins` in CORS middleware to specific domains
+   - Use environment-specific configuration
+   - Set up proper logging and monitoring
+   - Use a production-grade ASGI server (e.g., gunicorn with uvicorn workers)
+
+2. **Flutter App:**
+   - Update `baseUrl` in `ApiService` to production API URL
+   - Build release versions: `flutter build apk` or `flutter build ios`
+   - Test on physical devices
+
 ---
 
 ## 📡 API Endpoints
