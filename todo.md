@@ -36,5 +36,5 @@
 
 ## Phase 5: Polish
 
-- [ ] Add error handling for API failures.
-- [ ] Write a simple README with instructions on how to run the backend and frontend.
+- [x] Add error handling for API failures.
+- [x] Write a simple README with instructions on how to run the backend and frontend.

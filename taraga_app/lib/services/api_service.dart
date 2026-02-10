@@ -53,7 +53,7 @@ class ApiService {
   }
 
   // Get all themes
-  Future<List<Theme>> getAllThemes() async {
+  Future<List<MarketTheme>> getAllThemes() async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/api/v1/themes/list'),
@@ -62,7 +62,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Theme.fromJson(json)).toList();
+        return data.map((json) => MarketTheme.fromJson(json)).toList();
       } else {
         throw Exception('Failed to load themes: ${response.statusCode}');
       }

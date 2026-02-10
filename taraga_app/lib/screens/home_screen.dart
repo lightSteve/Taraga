@@ -62,8 +62,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Taraga 따라가'),
-        subtitle: const Text('Wall Street to Yeouido'),
+        title: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Taraga 따라가'),
+            Text(
+              'Wall Street to Yeouido',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

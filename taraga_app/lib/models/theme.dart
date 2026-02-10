@@ -1,16 +1,16 @@
-class Theme {
+class MarketTheme {
   final int id;
   final String name;
   final List<String> keywords;
 
-  Theme({
+  MarketTheme({
     required this.id,
     required this.name,
     required this.keywords,
   });
 
-  factory Theme.fromJson(Map<String, dynamic> json) {
-    return Theme(
+  factory MarketTheme.fromJson(Map<String, dynamic> json) {
+    return MarketTheme(
       id: json['id'],
       name: json['name'] ?? '',
       keywords: (json['keywords'] as List<dynamic>?)
