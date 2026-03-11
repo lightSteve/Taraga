@@ -293,27 +293,117 @@ def get_color(val):
 
 @st.cache_data(ttl=1800)
 def fetch_sector_data(market="US"):
-    """섹터별 ETF 데이터로 히트맵용 데이터 생성 (US/KR 지원)"""
+    """섹터별 데이터로 히트맵용 데이터 생성 (US/KR 지원)"""
     try:
         import yfinance as yf
         import pandas as pd
 
         if market == "KR":
-            sector_etfs = {
-                "091160.KS": ("IT/반도체", "IT/Semiconductor", 22),
-                "091170.KS": ("자동차", "Automobile", 10),
-                "091180.KS": ("헬스케어", "Healthcare", 8),
-                "091220.KS": ("화학", "Chemicals", 7),
-                "091230.KS": ("철강", "Steel", 4),
-                "140700.KS": ("에너지", "Energy", 5),
-                "140710.KS": ("금융", "Financials", 12),
-                "098560.KS": ("미디어/통신", "Media/Telecom", 6),
-                "117700.KS": ("건설", "Construction", 5),
-                "117680.KS": ("산업재", "Industrials", 7),
-                "266390.KS": ("2차전지", "Battery", 8),
-                "305720.KS": ("필수소비재", "Consumer Staples", 6),
+            # 한국: 대분류 섹터별 대표 종목으로 섹터 등락률 계산
+            sector_stocks = {
+                "IT/반도체": {
+                    "tickers": {"005930.KS": "삼성전자", "000660.KS": "SK하이닉스"},
+                    "weight": 25,
+                },
+                "2차전지": {
+                    "tickers": {"373220.KS": "LG에너지솔루션", "006400.KS": "삼성SDI", "051910.KS": "LG화학"},
+                    "weight": 10,
+                },
+                "자동차": {
+                    "tickers": {"005380.KS": "현대차", "000270.KS": "기아", "012330.KS": "현대모비스"},
+                    "weight": 10,
+                },
+                "바이오/헬스케어": {
+                    "tickers": {"207940.KS": "삼성바이오", "068270.KS": "셀트리온"},
+                    "weight": 8,
+                },
+                "금융": {
+                    "tickers": {"105560.KS": "KB금융", "055550.KS": "신한지주", "032830.KS": "삼성생명"},
+                    "weight": 12,
+                },
+                "인터넷/플랫폼": {
+                    "tickers": {"035420.KS": "NAVER", "035720.KS": "카카오"},
+                    "weight": 8,
+                },
+                "에너지/화학": {
+                    "tickers": {"096770.KS": "SK이노베이션", "010950.KS": "S-Oil"},
+                    "weight": 5,
+                },
+                "철강/소재": {
+                    "tickers": {"005490.KS": "POSCO홀딩스", "003670.KS": "포스코퓨처엠"},
+                    "weight": 5,
+                },
+                "전자/부품": {
+                    "tickers": {"009150.KS": "삼성전기", "066570.KS": "LG전자"},
+                    "weight": 6,
+                },
+                "유틸리티/건설": {
+                    "tickers": {"015760.KS": "한국전력", "028260.KS": "삼성물산"},
+                    "weight": 5,
+                },
+                "통신": {
+                    "tickers": {"017670.KS": "SK텔레콤", "030200.KS": "KT"},
+                    "weight": 6,
+                },
             }
-        else:
+
+            # 모든 종목 티커 수집
+            all_tickers = []
+            for sector_info in sector_stocks.values():
+                all_tickers.extend(sector_info["tickers"].keys())
+
+            tickers_str = " ".join(all_tickers)
+            data = yf.download(tickers_str, period="5d", group_by="ticker", progress=False, threads=False)
+            if data is None or data.empty:
+                return [], None
+
+            results = []
+            data_date = None
+
+            for sector_name, sector_info in sector_stocks.items():
+                changes = []
+                for ticker in sector_info["tickers"]:
+                    try:
+                        if isinstance(data.columns, pd.MultiIndex):
+                            if ticker in data.columns.get_level_values(0):
+                                df = data[ticker]
+                            elif ticker in data.columns.get_level_values(1):
+                                df = data.xs(ticker, axis=1, level=1)
+                            else:
+                                continue
+                        else:
+                            continue
+
+                        df = df.dropna(subset=["Close"])
+                        if len(df) < 2:
+                            continue
+
+                        if data_date is None:
+                            last_idx = df.index[-1]
+                            data_date = last_idx.strftime("%Y-%m-%d") if hasattr(last_idx, 'strftime') else str(last_idx)[:10]
+
+                        cur = float(df["Close"].iloc[-1])
+                        prev = float(df["Close"].iloc[-2])
+                        cp = ((cur - prev) / prev) * 100 if prev > 0 else 0
+                        changes.append(cp)
+                    except Exception:
+                        continue
+
+                if changes:
+                    avg_change = sum(changes) / len(changes)
+                    stock_names = ", ".join(sector_info["tickers"].values())
+                    results.append({
+                        "ticker": stock_names,
+                        "sector_kr": sector_name,
+                        "sector_en": sector_name,
+                        "change_percent": round(avg_change, 2),
+                        "weight": sector_info["weight"],
+                        "price": 0,
+                    })
+
+            return results, data_date
+
+        else:  # US
             sector_etfs = {
                 "XLK": ("IT/기술", "Technology", 30),
                 "XLV": ("헬스케어", "Healthcare", 13),
@@ -328,54 +418,50 @@ def fetch_sector_data(market="US"):
                 "XLC": ("통신서비스", "Comm. Services", 9),
             }
 
-        tickers_str = " ".join(sector_etfs.keys())
-        data = yf.download(tickers_str, period="5d", group_by="ticker", progress=False, threads=False)
-        if data is None or data.empty:
-            return [], None
+            tickers_str = " ".join(sector_etfs.keys())
+            data = yf.download(tickers_str, period="5d", group_by="ticker", progress=False, threads=False)
+            if data is None or data.empty:
+                return [], None
 
-        results = []
-        data_date = None
+            results = []
+            data_date = None
 
-        for ticker, (kr_name, en_name, weight) in sector_etfs.items():
-            try:
-                if isinstance(data.columns, pd.MultiIndex):
-                    if ticker in data.columns.get_level_values(0):
-                        df = data[ticker]
-                    elif ticker in data.columns.get_level_values(1):
-                        df = data.xs(ticker, axis=1, level=1)
+            for ticker, (kr_name, en_name, weight) in sector_etfs.items():
+                try:
+                    if isinstance(data.columns, pd.MultiIndex):
+                        if ticker in data.columns.get_level_values(0):
+                            df = data[ticker]
+                        elif ticker in data.columns.get_level_values(1):
+                            df = data.xs(ticker, axis=1, level=1)
+                        else:
+                            continue
                     else:
                         continue
-                else:
+
+                    df = df.dropna(subset=["Close"])
+                    if len(df) < 2:
+                        continue
+
+                    if data_date is None:
+                        last_idx = df.index[-1]
+                        data_date = last_idx.strftime("%Y-%m-%d") if hasattr(last_idx, 'strftime') else str(last_idx)[:10]
+
+                    cur = float(df["Close"].iloc[-1])
+                    prev = float(df["Close"].iloc[-2])
+                    cp = ((cur - prev) / prev) * 100 if prev > 0 else 0
+
+                    results.append({
+                        "ticker": ticker,
+                        "sector_kr": kr_name,
+                        "sector_en": en_name,
+                        "change_percent": round(cp, 2),
+                        "weight": weight,
+                        "price": round(cur, 2),
+                    })
+                except Exception:
                     continue
 
-                df = df.dropna(subset=["Close"])
-                if len(df) < 2:
-                    continue
-
-                # 데이터 기준일 추출
-                if data_date is None:
-                    last_idx = df.index[-1]
-                    if hasattr(last_idx, 'strftime'):
-                        data_date = last_idx.strftime("%Y-%m-%d")
-                    else:
-                        data_date = str(last_idx)[:10]
-
-                cur = float(df["Close"].iloc[-1])
-                prev = float(df["Close"].iloc[-2])
-                cp = ((cur - prev) / prev) * 100 if prev > 0 else 0
-
-                results.append({
-                    "ticker": ticker,
-                    "sector_kr": kr_name,
-                    "sector_en": en_name,
-                    "change_percent": round(cp, 2),
-                    "weight": weight,
-                    "price": round(cur, 2),
-                })
-            except Exception:
-                continue
-
-        return results, data_date
+            return results, data_date
     except Exception:
         return [], None
 
@@ -613,7 +699,7 @@ if page == "📊 글로벌 시장":
     # ═══ 섹터 히트맵 (US, KR) ═══
     if selected_market in ("US", "KR"):
         market_label = {"US": "🇺🇸 미국", "KR": "🇰🇷 한국"}[selected_market]
-        etf_label = {"US": "S&P 500 섹터 ETF", "KR": "KODEX 섹터 ETF"}[selected_market]
+        etf_label = {"US": "S&P 500 섹터 ETF", "KR": "대표 종목 가중평균"}[selected_market]
         st.markdown(f'<p class="section-title">🗺️ {market_label} 섹터 히트맵</p>', unsafe_allow_html=True)
 
         sector_data, data_date = fetch_sector_data(market=selected_market)
