@@ -392,7 +392,7 @@ with st.sidebar:
     else:
         page = st.radio(
             "페이지 선택",
-            ["📊 글로벌 시장"],
+            ["📊 글로벌 시장", "📅 캘린더", "📈 종목 상세"],
             label_visibility="collapsed",
         )
         st.caption("서버 연결 시 브리핑, 테마, 인사이트 등 이용 가능")
@@ -619,8 +619,6 @@ if page == "📊 글로벌 시장":
                         )
                 else:
                     st.info("데이터 없음")
-            else:
-                st.info("데이터 없음")
 
 
 # ═══════════════════════════════════════════
