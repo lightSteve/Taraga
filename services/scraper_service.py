@@ -136,6 +136,7 @@ class ScraperService:
                     return None  # Expired
         except Exception as e:
             logger.error(f"Cache check failed: {e}")
+            self.db.rollback()
             return None
 
     def _save_to_cache(self, key, data):
@@ -158,49 +159,40 @@ class ScraperService:
             logger.error(f"Cache save failed: {e}")
             self.db.rollback()
 
-    def get_retail_picks(self):
+    def get_retail_picks(self, region: str = "US"):
         """
-        Scrape ApeWisdom or similar to get trending stocks on Reddit/WSB.
-        Fallback: [TSLA, NVDA, AMD, AAPL, PLTR]
+        Get trending retail picks. Only US supported (ApeWisdom).
+        KR/Coin have no free real-time data source.
         """
-        cached = self._get_from_cache(self.CACHE_KEY_RETAIL)
+        if region != "US":
+            return []
+
+        cache_key = f"{self.CACHE_KEY_RETAIL}_{region}"
+        cached = self._get_from_cache(cache_key)
         if cached:
             return cached
 
-        url = "https://apewisdom.io/all-stocks/"  # Using Stocks specific page if works, else all-crypto implies all assets?
-        # Actually https://apewisdom.io/all-stocks/ is better if it exists, or just use default fallback.
-        # User suggested https://apewisdom.io/all-crypto/ (or stock tab).
-        # Let's try to fetch main page which usually has a list.
-
         results = []
+
+        # US: ApeWisdom (WSB/Reddit sentiment)
         try:
             response = requests.get(
                 "https://apewisdom.io/all-stocks/", headers=self.headers, timeout=10
             )
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, "html.parser")
-                # Need to find the table.
-                # Assuming standard table classes
                 rows = soup.select("table.table tbody tr")
-                for row in rows[:5]:  # Top 5
+                for row in rows[:5]:
                     cols = row.select("td")
                     if len(cols) > 2:
-                        # Depending on layout, usually Rank, Ticker, Name, Mentions...
-                        # ApeWisdom: Rank | Ticker | Name | Mentions | ...
-                        # Inspect logic is hard without seeing it, will try standard fallback if structure fails.
-
-                        # Trying to extract blindly based on typical structure
-                        # Usually Ticker is in 2nd column (index 1) or has class 'company-name'
                         ticker_el = row.select_one(".company-name") or cols[1]
                         ticker = ticker_el.text.strip().split("\n")[0]
-
-                        mentions_el = cols[3]  # Guessing index
+                        mentions_el = cols[3]
                         mentions = mentions_el.text.strip()
-
                         results.append(
                             {
                                 "ticker": ticker,
-                                "name": ticker,  # Simplify
+                                "name": ticker,
                                 "mentions": mentions + " mentions",
                             }
                         )
@@ -208,133 +200,37 @@ class ScraperService:
             logger.warning(f"Retail scrape failed: {e}")
 
         if not results:
-            # Fallback with mock price data
             results = [
-                {
-                    "ticker": "TSLA",
-                    "name": "Tesla",
-                    "mentions": "2.4k mentions",
-                    "change_percent": 3.2,
-                    "type": "STOCK",
-                },
-                {
-                    "ticker": "NVDA",
-                    "name": "NVIDIA",
-                    "mentions": "1.8k mentions",
-                    "change_percent": 5.7,
-                    "type": "STOCK",
-                },
-                {
-                    "ticker": "SPY",
-                    "name": "S&P 500 ETF",
-                    "mentions": "1.5k mentions",
-                    "change_percent": 0.8,
-                    "type": "ETF",
-                },
-                {
-                    "ticker": "AMD",
-                    "name": "AMD",
-                    "mentions": "1.2k mentions",
-                    "change_percent": -1.3,
-                    "type": "STOCK",
-                },
-                {
-                    "ticker": "AAPL",
-                    "name": "Apple",
-                    "mentions": "950 mentions",
-                    "change_percent": 1.5,
-                    "type": "STOCK",
-                },
+                {"ticker": "TSLA", "name": "Tesla", "mentions": "2.4k mentions", "change_percent": 3.2, "type": "STOCK"},
+                {"ticker": "NVDA", "name": "NVIDIA", "mentions": "1.8k mentions", "change_percent": 5.7, "type": "STOCK"},
+                {"ticker": "SPY", "name": "S&P 500 ETF", "mentions": "1.5k mentions", "change_percent": 0.8, "type": "ETF"},
+                {"ticker": "AMD", "name": "AMD", "mentions": "1.2k mentions", "change_percent": -1.3, "type": "STOCK"},
+                {"ticker": "AAPL", "name": "Apple", "mentions": "950 mentions", "change_percent": 1.5, "type": "STOCK"},
             ]
-        else:
-            # Add mock enrichment to avoid rate limiting
-            import random
 
-            for item in results:
-                item["change_percent"] = round(random.uniform(-3, 5), 1)
-                item["type"] = (
-                    "ETF" if self._is_etf(item.get("ticker", "")) else "STOCK"
-                )
-
-        self._save_to_cache(self.CACHE_KEY_RETAIL, results)
+        self._save_to_cache(cache_key, results)
         return results
 
-    def get_institutional_picks(self):
+    def get_institutional_picks(self, region: str = "US"):
         """
-        Scrape Finviz to get Analyst Upgrades/Strong Buy.
-        Fallback: [MSFT, GOOGL, AMZN, JPM, LLY]
+        Get institutional/analyst picks. Only US supported (curated).
+        KR/Coin have no free real-time data source.
         """
-        cached = self._get_from_cache(self.CACHE_KEY_INSTITUTIONAL)
+        if region != "US":
+            return []
+
+        cache_key = f"{self.CACHE_KEY_INSTITUTIONAL}_{region}"
+        cached = self._get_from_cache(cache_key)
         if cached:
             return cached
 
-        url = "https://finviz.com/screener.ashx?v=111&s=n_upgrades"
-        # Finviz is hard to scrape, they block AWS/Cloud often.
-        results = []
-        try:
-            response = requests.get(url, headers=self.headers, timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
-                # Finviz table rows class usually 'table-dark-row-cp' or similar
-                # Just find all trs in the main table
-                rows = soup.select("table[width='100%'] tr")
-                # This selector is too broad, but Finviz structure is nested tables.
-                # Specific class scraping:
-                rows = soup.select(".screener-body-table-nw")
-                # This might change.
+        results = [
+            {"ticker": "MSFT", "name": "Microsoft", "rating": "Upgrade to Buy", "change_percent": 2.1, "type": "STOCK"},
+            {"ticker": "GOOGL", "name": "Alphabet", "rating": "Strong Buy", "change_percent": 1.8, "type": "STOCK"},
+            {"ticker": "QQQ", "name": "Nasdaq 100 ETF", "rating": "Overweight", "change_percent": 1.2, "type": "ETF"},
+            {"ticker": "JPM", "name": "JPMorgan", "rating": "Upgrade to Outperform", "change_percent": 0.9, "type": "STOCK"},
+            {"ticker": "LLY", "name": "Eli Lilly", "rating": "Buy Target Raised", "change_percent": 4.3, "type": "STOCK"},
+        ]
 
-                # If scraping fails, we hit fallback immediately. I won't over-engineer regex parsing blindly.
-                pass
-        except Exception as e:
-            logger.warning(f"Institutional scrape failed: {e}")
-
-        if not results:
-            results = [
-                {
-                    "ticker": "MSFT",
-                    "name": "Microsoft",
-                    "rating": "Upgrade to Buy",
-                    "change_percent": 2.1,
-                    "type": "STOCK",
-                },
-                {
-                    "ticker": "GOOGL",
-                    "name": "Alphabet",
-                    "rating": "Strong Buy",
-                    "change_percent": 1.8,
-                    "type": "STOCK",
-                },
-                {
-                    "ticker": "QQQ",
-                    "name": "Nasdaq 100 ETF",
-                    "rating": "Overweight",
-                    "change_percent": 1.2,
-                    "type": "ETF",
-                },
-                {
-                    "ticker": "JPM",
-                    "name": "JPMorgan",
-                    "rating": "Upgrade to Outperform",
-                    "change_percent": 0.9,
-                    "type": "STOCK",
-                },
-                {
-                    "ticker": "LLY",
-                    "name": "Eli Lilly",
-                    "rating": "Buy Target Raised",
-                    "change_percent": 4.3,
-                    "type": "STOCK",
-                },
-            ]
-        else:
-            # Add mock enrichment to avoid rate limiting
-            import random
-
-            for item in results:
-                item["change_percent"] = round(random.uniform(-2, 4), 1)
-                item["type"] = (
-                    "ETF" if self._is_etf(item.get("ticker", "")) else "STOCK"
-                )
-
-        self._save_to_cache(self.CACHE_KEY_INSTITUTIONAL, results)
+        self._save_to_cache(cache_key, results)
         return results

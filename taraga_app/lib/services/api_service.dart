@@ -5,11 +5,20 @@ import '../models/stock.dart';
 import '../models/briefing.dart';
 import '../models/value_chain.dart';
 import '../models/bridge_news.dart';
+import 'user_service.dart';
 
 /// API service for communicating with Taraga backend
 class ApiService {
-  // Base URL for the API - change this to your actual server URL
-  static const String baseUrl = 'http://localhost:8000/api/v1';
+  // Base URL for the API
+  // - Android emulator: http://10.0.2.2:8000/api/v1
+  // - iOS simulator / macOS: http://localhost:8000/api/v1
+  // - Real device: Replace with your server's LAN IP
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8000/api/v1',
+  );
+  
+  final UserService _userService = UserService();
 
   /// Fetch all available themes
   Future<List<MarketTheme>> getThemes() async {
@@ -123,8 +132,9 @@ class ApiService {
     }
   }
   /// Fetch personal stock matches for a user
-  Future<Map<String, dynamic>> getPersonalMatches(String userUuid) async {
+  Future<Map<String, dynamic>> getPersonalMatches() async {
     try {
+      final userUuid = await _userService.getUserUuid();
       final response = await http.get(
         Uri.parse('$baseUrl/insight/personal-matches?user_uuid=$userUuid'),
         headers: {'Accept': 'application/json; charset=utf-8'},
@@ -133,12 +143,16 @@ class ApiService {
       if (response.statusCode == 200) {
         final String responseBody = utf8.decode(response.bodyBytes);
         return json.decode(responseBody);
+      } else if (response.statusCode == 404) {
+        // User not found or no matches yet
+        return {"personal_matches": []};
       } else {
         throw Exception(
             'Failed to load personal matches: ${response.statusCode}');
       }
     } catch (e) {
-      throw Exception('Error fetching personal matches: $e');
+      print('Error fetching personal matches: $e');
+      return {"personal_matches": []};
     }
   }
 
@@ -183,21 +197,28 @@ class ApiService {
   }
 
   /// Watchlist APIs
-  Future<List<dynamic>> getWatchlist(String userUuid) async {
+  Future<List<dynamic>> getWatchlist() async {
     try {
+      final userUuid = await _userService.getUserUuid();
       final response = await http.get(Uri.parse('$baseUrl/watchlist/$userUuid'));
       if (response.statusCode == 200) {
         return json.decode(utf8.decode(response.bodyBytes));
+      } else if (response.statusCode == 404) {
+        // Watchlist not found (empty) - return empty list instead of throwing error
+        return [];
       } else {
         throw Exception('Failed to load watchlist: ${response.statusCode}');
       }
     } catch (e) {
-      throw Exception('Error fetching watchlist: $e');
+      // Return empty list for any errors to prevent UI crashes
+      print('Watchlist error (returning empty): $e');
+      return [];
     }
   }
 
-  Future<void> addToWatchlist(String userUuid, String ticker, String name) async {
+  Future<void> addToWatchlist(String ticker, String name) async {
     try {
+      final userUuid = await _userService.getUserUuid();
       final response = await http.post(
         Uri.parse('$baseUrl/watchlist/'),
         headers: {'Content-Type': 'application/json'},
@@ -276,7 +297,7 @@ class ApiService {
       if (response.statusCode == 200) {
         final String responseBody = utf8.decode(response.bodyBytes);
         final json = jsonDecode(responseBody);
-        return json['data'];
+        return json['data'] ?? {};
       } else {
         throw Exception('Failed to load system mode: ${response.statusCode}');
       }
@@ -296,7 +317,7 @@ class ApiService {
       if (response.statusCode == 200) {
         final String responseBody = utf8.decode(response.bodyBytes);
         final json = jsonDecode(responseBody);
-        return json['data'];
+        return json['data'] ?? {};
       } else {
         throw Exception('Failed to load indices: ${response.statusCode}');
       }
@@ -305,11 +326,11 @@ class ApiService {
     }
   }
 
-  /// Get Retail (WSB) Picks
-  Future<List<dynamic>> getRetailPicks() async {
+  /// Get Retail (WSB/Community) Picks
+  Future<List<dynamic>> getRetailPicks({String region = "US"}) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/market/us/trends/retail'),
+        Uri.parse('$baseUrl/market/us/trends/retail?region=$region'),
         headers: {'Accept': 'application/json; charset=utf-8'},
       );
 
@@ -326,11 +347,33 @@ class ApiService {
     }
   }
 
-  /// Get Institutional Picks
-  Future<List<dynamic>> getInstitutionalPicks() async {
+  /// Get Detailed Stock Info (Price + History + Stats)
+  Future<Map<String, dynamic>> getStockDetail(String ticker) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/market/us/trends/institutional'),
+        Uri.parse('$baseUrl/market/stock/$ticker'),
+        headers: {'Accept': 'application/json; charset=utf-8'},
+      );
+
+      if (response.statusCode == 200) {
+        final String responseBody = utf8.decode(response.bodyBytes);
+        final json = jsonDecode(responseBody);
+        if (json['status'] == 'success') {
+           return json['data'];
+        }
+      }
+      return {};
+    } catch (e) {
+      print('Error loading stock detail: $e');
+      return {};
+    }
+  }
+
+  /// Get Institutional (Whale/Foreign) Picks
+  Future<List<dynamic>> getInstitutionalPicks({String region = "US"}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/market/us/trends/institutional?region=$region'),
         headers: {'Accept': 'application/json; charset=utf-8'},
       );
 

@@ -108,6 +108,55 @@ Return as a JSON array of strings."""
 
         return json.loads(response.choices[0].message.content)
 
+    def translate_bridge_news(self, articles: list):
+        """
+        Translate English news to Korean and analyze market impact.
+
+        Args:
+            articles: List of dicts with 'title', 'source', 'published_at'
+
+        Returns:
+            List of Bridge News items in Korean
+        """
+        system_prompt = """You are a financial expert bridging US and Korean markets.
+Your task is to:
+1. Translate the US news headline to natural Korean.
+2. Analyze the impact of this news on the Korean market (KOSPI/KOSDAQ).
+3. Identify related Korean stocks (Name + Ticker if known).
+
+Input Format: List of English news articles.
+Output Format: JSON object with key "news" containing a list of items:
+{
+  "news": [
+    {
+      "us_source": "Source Name",
+      "us_headline": "Korean Translation of Headline",
+      "kr_impact": "Analysis of impact on Korean market (in Korean)",
+      "related_stocks": [
+        {"name": "Stock Name", "ticker": "123456", "change": "Predicted Change e.g. +2.0%"}
+      ],
+      "timestamp": "Original Timestamp"
+    }
+  ]
+}
+"""
+
+        user_prompt = f"""Analyze these US news articles and generate Bridge News for Korean investors:
+{json.dumps(articles, indent=2)}
+"""
+
+        response = self.client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7,
+        )
+
+        return json.loads(response.choices[0].message.content)
+
 
 if __name__ == "__main__":
     # Test the service

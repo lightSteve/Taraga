@@ -62,7 +62,17 @@ class DailyBriefing(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, unique=True, nullable=False)
-    content = Column(Text, nullable=False)  # The generated summary text
+    content = Column(Text, nullable=True)  # Legacy: full text summary
+
+    # Structured fields for frontend consumption
+    us_summary = Column(Text, nullable=True)
+    market_sentiment = Column(
+        String(50), nullable=True
+    )  # e.g. "Greed", "Fear", "Neutral"
+    key_indices_json = Column(
+        JSON, nullable=True
+    )  # {"S&P 500": {"value": 5200, "change_percent": 1.2}, ...}
+    fear_greed_score = Column(Integer, nullable=True)  # 0-100
 
     # Store JSON structure as well for structured UI
     structured_content = Column(JSON, nullable=True)

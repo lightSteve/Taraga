@@ -4,6 +4,9 @@ import 'home_screen.dart';
 import 'insight_screen.dart';
 import 'calendar_screen.dart';
 import 'mypage_screen.dart';
+import '../widgets/animated_nav_bar.dart';
+import '../widgets/custom_icons.dart';
+import '../theme/app_theme.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -31,45 +34,36 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: IndexedStack(
         index: _selectedIndex,
         children: _screens,
       ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(
-            top: BorderSide(color: Color(0xFF1E1E2C), width: 1.0),
+      bottomNavigationBar: AnimatedBottomNavBar(
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        items: [
+          BottomNavItem(
+            iconBuilder: (color, size) => TaragaIcons.home(color: color, size: size),
+            label: '홈',
+            selectedColor: AppColors.primary,
           ),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
-          backgroundColor: const Color(0xFF0A0E27), // Match Scaffold background
-          selectedItemColor: Colors.blueAccent,
-          unselectedItemColor: Colors.white54,
-          type: BottomNavigationBarType.fixed,
-          showUnselectedLabels: true,
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(CupertinoIcons.home),
-              label: '홈',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(CupertinoIcons.news),
-              label: '인사이트',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(CupertinoIcons.calendar),
-              label: '캘린더',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(CupertinoIcons.person),
-              label: '내 정보',
-            ),
-          ],
-        ),
+          BottomNavItem(
+            iconBuilder: (color, size) => TaragaIcons.insight(color: color, size: size),
+            label: '인사이트',
+            selectedColor: AppColors.accentOrange,
+          ),
+          BottomNavItem(
+            iconBuilder: (color, size) => TaragaIcons.calendar(color: color, size: size),
+            label: '캘린더',
+            selectedColor: AppColors.accentGreen,
+          ),
+          BottomNavItem(
+            iconBuilder: (color, size) => TaragaIcons.profile(color: color, size: size),
+            label: '내 정보',
+            selectedColor: AppColors.accentPurple,
+          ),
+        ],
       ),
     );
   }

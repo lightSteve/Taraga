@@ -45,13 +45,20 @@ dependencies:
   intl: ^0.18.1
   
   # Charts for market data visualization
-  fl_chart: ^0.60.0
+  fl_chart: ^0.69.0
   
   # Loading animations
   shimmer: ^3.0.0
   syncfusion_flutter_gauges: ^21.2.4
   chart_sparkline: ^1.1.2
   table_calendar: ^3.0.9
+  
+  # Rive animations for modern UI
+  rive: ^0.13.0
+  
+  # User identification (device-based, subscription-ready)
+  uuid: ^4.0.0
+  shared_preferences: ^2.2.0
 
 
 dev_dependencies:

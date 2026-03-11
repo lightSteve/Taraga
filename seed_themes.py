@@ -127,6 +127,22 @@ def seed_data():
             db.add(wl)
             db.commit()
 
+        # 4b. Test User (for App default)
+        test_user_uuid = "test_user_uuid"
+        user_test = db.query(User).filter(User.user_uuid == test_user_uuid).first()
+        if not user_test:
+            user_test = User(user_uuid=test_user_uuid)
+            db.add(user_test)
+            db.commit()
+            db.refresh(user_test)
+
+            # Add SK Hynix & Samsung to watchlist
+            wl1 = Watchlist(user_id=user_test.id, stock_kr_ticker="000660")
+            wl2 = Watchlist(user_id=user_test.id, stock_kr_ticker="005930")
+            db.add(wl1)
+            db.add(wl2)
+            db.commit()
+
         print("✅ Seed data populated successfully!")
 
     except Exception as e:

@@ -4,6 +4,7 @@ Provides US stock market data without API key requirements
 """
 
 import yfinance as yf
+import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import logging
@@ -219,91 +220,69 @@ class YahooFinanceService:
             ]
 
     def get_top_gainers(self, limit: int = 10) -> List[Dict]:
-        """
-        Get top gaining stocks from major S&P 500 components
-        Using batch fetch via yf.download for speed. Falls back to mock on failure.
-        """
+        """Get top gaining stocks from major S&P 500 components (real data)."""
         try:
-            # logger.info(f"Fetching top {limit} gainers from Yahoo Finance")
-            gainers = []
-
-            # Batch fetch data using yf.download (much faster)
-            tickers_str = " ".join(self.SP500_MAJOR_TICKERS[:30])
-            try:
-                data = yf.download(
-                    tickers_str, period="2d", group_by="ticker", progress=False
-                )
-            except Exception:
-                data = None
-
-            if data is None or data.empty:
-                logger.warning("yfinance batch download failed, using mock data")
+            all_stocks = self._fetch_all_movers()
+            if not all_stocks:
                 return self._get_mock_gainers_losers(is_gainer=True)[:limit]
-
-            for ticker in self.SP500_MAJOR_TICKERS[:30]:
-                try:
-                    # Get stock data from dataframe
-                    if len(self.SP500_MAJOR_TICKERS[:30]) == 1:
-                        df = data
-                    else:
-                        if ticker in data.columns.levels[0]:
-                            df = data[ticker]
-                        else:
-                            continue
-
-                    if len(df) < 2:
-                        continue
-
-                    # Calculate change from last 2 days close
-                    try:
-                        current_close = float(df["Close"].iloc[-1])
-                        prev_close = float(df["Close"].iloc[-2])
-
-                        if prev_close > 0:
-                            change_percent = (
-                                (current_close - prev_close) / prev_close
-                            ) * 100
-
-                            gainers.append(
-                                {
-                                    "ticker": ticker,
-                                    "name": ticker,
-                                    "price": current_close,
-                                    "change_percent": round(change_percent, 2),
-                                    "sector": "Major US",
-                                    "volume": int(df["Volume"].iloc[-1]),
-                                }
-                            )
-                    except Exception:
-                        continue
-
-                except Exception as e:
-                    logger.warning(f"Error processing {ticker}: {e}")
-                    continue
-
-            # Sort by change percentage and return top gainers
-            gainers.sort(key=lambda x: x["change_percent"], reverse=True)
-
-            if not gainers:
-                return self._get_mock_gainers_losers(is_gainer=True)[:limit]
-
-            # logger.info(f"Found {len(gainers)} stocks, returning top {limit}")
-            return gainers[:limit]
-
+            # Sort descending (biggest gain first)
+            all_stocks.sort(key=lambda x: x["change_percent"], reverse=True)
+            gainers = [s for s in all_stocks if s["change_percent"] > 0]
+            return (gainers or self._get_mock_gainers_losers(is_gainer=True))[:limit]
         except Exception as e:
             logger.error(f"Error fetching top gainers: {e}")
             return self._get_mock_gainers_losers(is_gainer=True)[:limit]
 
     def get_top_losers(self, limit: int = 10) -> List[Dict]:
-        """Get top losing stocks (Reuses standard list)"""
+        """Get top losing stocks from major S&P 500 components (real data)."""
         try:
-            # We can't easily reuse get_top_gainers logic for the shared fetch without refactoring
-            # making a separate call or reusing mocked data if gainers failed
-            # For simplicity in this optimization phase:
-            return self._get_mock_gainers_losers(is_gainer=False)[:limit]
+            all_stocks = self._fetch_all_movers()
+            if not all_stocks:
+                return self._get_mock_gainers_losers(is_gainer=False)[:limit]
+            # Sort ascending (most negative first)
+            all_stocks.sort(key=lambda x: x["change_percent"])
+            losers = [s for s in all_stocks if s["change_percent"] < 0]
+            return (losers or self._get_mock_gainers_losers(is_gainer=False))[:limit]
         except Exception as e:
             logger.error(f"Error fetching top losers: {e}")
             return self._get_mock_gainers_losers(is_gainer=False)[:limit]
+
+    def _fetch_all_movers(self) -> List[Dict]:
+        """Shared batch download for both gainers and losers."""
+        try:
+            tickers_str = " ".join(self.SP500_MAJOR_TICKERS[:30])
+            data = yf.download(
+                tickers_str, period="2d", group_by="ticker",
+                progress=False, threads=False,
+            )
+            if data is None or data.empty:
+                return []
+
+            results = []
+            for ticker in self.SP500_MAJOR_TICKERS[:30]:
+                try:
+                    if ticker in data.columns.levels[0]:
+                        df = data[ticker]
+                    else:
+                        continue
+                    if len(df) < 2:
+                        continue
+                    current_close = float(df["Close"].iloc[-1])
+                    prev_close = float(df["Close"].iloc[-2])
+                    if prev_close > 0:
+                        change_percent = ((current_close - prev_close) / prev_close) * 100
+                        results.append({
+                            "ticker": ticker, "name": ticker,
+                            "price": current_close,
+                            "change_percent": round(change_percent, 2),
+                            "sector": "Major US",
+                            "volume": int(df["Volume"].iloc[-1]),
+                        })
+                except Exception:
+                    continue
+            return results
+        except Exception:
+            return []
 
     def get_stock_data(self, ticker: str) -> Optional[Dict]:
         """
@@ -340,6 +319,10 @@ class YahooFinanceService:
                 "volume": info.get("volume", 0),
                 "market_cap": info.get("marketCap", 0),
                 "pe_ratio": info.get("trailingPE"),
+                "currency": info.get("currency", "USD"),
+                "description": info.get(
+                    "longBusinessSummary", "No description available."
+                ),
             }
 
         except Exception as e:
@@ -348,42 +331,155 @@ class YahooFinanceService:
 
     def get_market_indices(self) -> Dict:
         """
-        Get major US market indices (S&P 500, Dow, Nasdaq)
+        Get major market indices for US, KR, and Crypto.
+        Uses yf.download() batch method for reliability.
 
         Returns:
-            Dictionary with index data
+            Dictionary with index data keyed by symbol
         """
+        # Define indices for each market
+        indices_map = {
+            # US
+            "^GSPC": {"name": "S&P 500", "market": "US"},
+            "^DJI": {"name": "Dow Jones", "market": "US"},
+            "^IXIC": {"name": "Nasdaq", "market": "US"},
+            # KR
+            "^KS11": {"name": "KOSPI", "market": "KR"},
+            "^KQ11": {"name": "KOSDAQ", "market": "KR"},
+            # Coin
+            "BTC-USD": {"name": "Bitcoin", "market": "Coin"},
+            "ETH-USD": {"name": "Ethereum", "market": "Coin"},
+        }
+        tickers_str = " ".join(indices_map.keys())
+
         try:
-            indices = {"^GSPC": "S&P 500", "^DJI": "Dow Jones", "^IXIC": "Nasdaq"}
+            logger.info(f"Downloading market indices: {tickers_str}")
+            # Fetch 1 month to ensure enough data points for sparkline (approx ~20 trading days)
+            data = yf.download(
+                tickers_str,
+                period="1mo",
+                group_by="ticker",
+                progress=False,
+                threads=False,
+            )
+
+            if data is None or data.empty:
+                logger.warning(
+                    "yfinance download returned empty for indices, using mock"
+                )
+                return self._get_mock_indices()
 
             results = {}
-
-            for symbol, name in indices.items():
+            for symbol, info in indices_map.items():
+                name = info["name"]
+                market = info["market"]
                 try:
-                    index = yf.Ticker(symbol)
-                    info = index.info
+                    df = None
+                    if len(indices_map) == 1:
+                        df = data
+                    else:
+                        # Handle potential MultiIndex columns structure differences
+                        if isinstance(data.columns, pd.MultiIndex):
+                            if symbol in data.columns.get_level_values(
+                                1
+                            ):  # Ticker is level 1
+                                df = data.xs(symbol, axis=1, level=1)
+                            elif symbol in data.columns.get_level_values(
+                                0
+                            ):  # Ticker is level 0
+                                df = data[symbol]
+                        else:
+                            if symbol in data.columns:
+                                df = data[
+                                    symbol
+                                ]  # Should not happen with group_by='ticker' but safe check
 
-                    current_price = info.get("regularMarketPrice")
-                    previous_close = info.get("previousClose")
+                    if df is None:
+                        # Fallback search if structure is unexpected
+                        continue
 
-                    if current_price and previous_close:
+                    # Drop NaN rows and get last 2 valid closes
+                    df = df.dropna(subset=["Close"])
+                    if len(df) < 2:
+                        continue
+
+                    # Prepare history for sparkline (last 14 days)
+                    history = [float(x) for x in df["Close"].tail(14).tolist()]
+
+                    current_close = float(df["Close"].iloc[-1])
+                    prev_close = float(df["Close"].iloc[-2])
+
+                    if prev_close > 0:
                         change_percent = (
-                            (current_price - previous_close) / previous_close
+                            (current_close - prev_close) / prev_close
                         ) * 100
-
                         results[name] = {
-                            "value": current_price,
-                            "change_percent": round(change_percent, 2),
+                            "regularMarketPrice": round(current_close, 2),
+                            "regularMarketChangePercent": round(change_percent, 2),
+                            "history": history,
+                            "market": market,  # Add market type for frontend grouping
                         }
                 except Exception as e:
-                    logger.warning(f"Error fetching {name}: {e}")
+                    logger.warning(f"Error processing index {name}: {e}")
                     continue
+
+            if not results:
+                return self._get_mock_indices()
 
             return results
 
         except Exception as e:
             logger.error(f"Error fetching market indices: {e}")
-            return {}
+            return self._get_mock_indices()
+
+    def _get_mock_indices(self):
+        # Helper for mock data structure matches new return format
+        import random
+
+        return {
+            "S&P 500": {
+                "regularMarketPrice": 5100.0,
+                "regularMarketChangePercent": 0.5,
+                "history": [5000 + i * 10 for i in range(14)],
+                "market": "US",
+            },
+            "Dow Jones": {
+                "regularMarketPrice": 39000.0,
+                "regularMarketChangePercent": 0.2,
+                "history": [38000 + i * 50 for i in range(14)],
+                "market": "US",
+            },
+            "Nasdaq": {
+                "regularMarketPrice": 16000.0,
+                "regularMarketChangePercent": 0.8,
+                "history": [15500 + i * 40 for i in range(14)],
+                "market": "US",
+            },
+            "KOSPI": {
+                "regularMarketPrice": 2650.0,
+                "regularMarketChangePercent": -0.3,
+                "history": [2600 + i * 5 for i in range(14)],
+                "market": "KR",
+            },
+            "KOSDAQ": {
+                "regularMarketPrice": 850.0,
+                "regularMarketChangePercent": -0.5,
+                "history": [840 + i * 2 for i in range(14)],
+                "market": "KR",
+            },
+            "Bitcoin": {
+                "regularMarketPrice": 65000.0,
+                "regularMarketChangePercent": 2.5,
+                "history": [60000 + i * 500 for i in range(14)],
+                "market": "Coin",
+            },
+            "Ethereum": {
+                "regularMarketPrice": 3500.0,
+                "regularMarketChangePercent": 1.2,
+                "history": [3200 + i * 20 for i in range(14)],
+                "market": "Coin",
+            },
+        }
 
     def get_historical_data(self, ticker: str, days: int = 30) -> List[Dict]:
         """

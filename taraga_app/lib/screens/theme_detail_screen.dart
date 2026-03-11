@@ -3,6 +3,7 @@ import '../models/theme.dart';
 import '../models/stock.dart';
 import '../models/value_chain.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 
 /// Theme detail screen showing Korean stocks for a selected theme
 class ThemeDetailScreen extends StatefulWidget {
@@ -56,25 +57,25 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E27),
+      backgroundColor: AppColors.bgPrimary,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1F3A),
+        backgroundColor: AppColors.bgPrimary,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           widget.theme.name,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: AppColors.textPrimary,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
+            icon: Icon(Icons.refresh, color: AppColors.textMuted),
             onPressed: _loadStocks,
           ),
         ],
@@ -86,20 +87,13 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF1E3A8A),
-                  const Color(0xFF3B82F6),
-                ],
-              ),
+              gradient: AppColors.blueGradient,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Related Keywords',
+                Text(
+                  '관련 키워드',
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 14,
@@ -141,9 +135,9 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
           // Stocks List
           Expanded(
             child: _isLoading
-                ? const Center(
+                ? Center(
                     child: CircularProgressIndicator(
-                      color: Colors.blue,
+                      color: AppColors.primary,
                     ),
                   )
                 : _errorMessage != null
@@ -151,16 +145,16 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.error_outline,
-                              color: Colors.red,
+                              color: AppColors.danger,
                               size: 64,
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'Error loading stocks',
+                              '종목 데이터를 불러올 수 없습니다',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
+                                color: AppColors.textSecondary,
                                 fontSize: 18,
                               ),
                             ),
@@ -172,7 +166,7 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                                 _errorMessage!,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: AppColors.textMuted,
                                   fontSize: 14,
                                 ),
                               ),
@@ -181,10 +175,11 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                             ElevatedButton(
                               onPressed: _loadStocks,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
+                                backgroundColor: AppColors.primary,
                                 foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                               ),
-                              child: const Text('Retry'),
+                              child: const Text('재시도'),
                             ),
                           ],
                         ),
@@ -196,14 +191,14 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                               children: [
                                 Icon(
                                   Icons.inbox_outlined,
-                                  color: Colors.white.withOpacity(0.3),
+                                  color: AppColors.textLight,
                                   size: 64,
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
-                                  'No stocks found for this theme',
+                                  '이 테마에 해당하는 종목이 없습니다',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
+                                    color: AppColors.textMuted,
                                     fontSize: 16,
                                   ),
                                 ),
@@ -212,7 +207,7 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                           )
                         : RefreshIndicator(
                             onRefresh: _loadStocks,
-                            color: Colors.blue,
+                            color: AppColors.primary,
                             child: ListView.builder(
                               padding: const EdgeInsets.all(16),
                               itemCount: _stocks.length,
@@ -237,14 +232,7 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1F3A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.1),
-          width: 1,
-        ),
-      ),
+      decoration: AppDecorations.cleanCard(borderRadius: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -257,8 +245,8 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                   children: [
                     Text(
                       stock.name,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -267,7 +255,7 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                     Text(
                       stock.ticker,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: AppColors.textMuted,
                         fontSize: 12,
                       ),
                     ),
@@ -280,8 +268,8 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                   children: [
                     Text(
                       '₩${stock.currentPrice!.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
@@ -289,33 +277,31 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                     if (hasChange)
                       Container(
                         margin: const EdgeInsets.only(top: 4),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: isPositive
-                              ? Colors.red.withOpacity(0.2)
-                              : isNegative
-                                  ? Colors.blue.withOpacity(0.2)
-                                  : Colors.grey.withOpacity(0.2),
+                          color: isPositive ? AppColors.marketUp.withOpacity(0.1) : isNegative ? AppColors.marketDown.withOpacity(0.1) : AppColors.bgSecondary,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           '${isPositive ? '+' : ''}${stock.changePercent!.toStringAsFixed(2)}%',
                           style: TextStyle(
-                            color: isPositive
-                                ? Colors.red
-                                : isNegative
-                                    ? Colors.blue
-                                    : Colors.grey,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                            color: isPositive ? AppColors.marketUp : isNegative ? AppColors.marketDown : AppColors.textMuted,
+                            fontSize: 12, fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                   ],
                 ),
+              const SizedBox(width: 12),
+              Column(
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.add_circle_outline_rounded, color: AppColors.primary),
+                    onPressed: () => _addToWatchlist(stock),
+                    tooltip: "관심종목 추가",
+                  ),
+                ],
+              ),
             ],
           ),
           if (stock.sector != null) ...[
@@ -323,13 +309,13 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
+                color: AppColors.primaryLight,
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
                 stock.sector!,
                 style: TextStyle(
-                  color: Colors.blue.shade300,
+                  color: AppColors.primary,
                   fontSize: 11,
                 ),
               ),
@@ -345,18 +331,14 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1F3A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.purple.withOpacity(0.3)),
-      ),
+      decoration: AppDecorations.accentCard(accentColor: AppColors.accentPurple, borderRadius: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '🔗 Value Chain Map',
+          Text(
+            '🔗 밸류체인 맵',
             style: TextStyle(
-              color: Colors.white,
+              color: AppColors.textPrimary,
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
@@ -370,12 +352,12 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                    Container(
                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                      decoration: BoxDecoration(
-                       color: Colors.purple.withOpacity(0.2),
+                       color: AppColors.accentPurple.withOpacity(0.1),
                        borderRadius: BorderRadius.circular(8),
                      ),
                      child: Text(
                        '🇺🇸 ${entry.key} (Driver)',
-                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                       style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
                      ),
                    ),
                    const SizedBox(height: 8),
@@ -384,14 +366,14 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                      child: Container(
                        padding: const EdgeInsets.only(left: 16),
                        decoration: BoxDecoration(
-                         border: Border(left: BorderSide(color: Colors.purple.withOpacity(0.3), width: 2)),
+                         border: Border(left: BorderSide(color: AppColors.accentPurple.withOpacity(0.3), width: 2)),
                        ),
                        child: Column(
                          children: entry.value.map((item) => Padding(
                            padding: const EdgeInsets.only(bottom: 8.0),
                            child: Row(
                              children: [
-                               const Icon(Icons.subdirectory_arrow_right, color: Colors.white54, size: 16),
+                               Icon(Icons.subdirectory_arrow_right, color: AppColors.textMuted, size: 16),
                                const SizedBox(width: 8),
                                Expanded(
                                  child: Column(
@@ -399,11 +381,11 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
                                    children: [
                                      Text(
                                        '🇰🇷 ${item.krStock}', 
-                                       style: const TextStyle(color: Colors.white, fontSize: 14),
+                                       style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
                                      ),
                                      Text(
                                        '${item.relation}: ${item.description}',
-                                       style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                                       style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                                      ),
                                    ],
                                  ),
@@ -421,5 +403,22 @@ class _ThemeDetailScreenState extends State<ThemeDetailScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _addToWatchlist(Stock stock) async {
+    try {
+      await _apiService.addToWatchlist(stock.ticker, stock.name);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${stock.name} 관심종목 추가 완료')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('추가 실패: $e')),
+        );
+      }
+    }
   }
 }

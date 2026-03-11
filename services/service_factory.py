@@ -114,12 +114,15 @@ class ServiceFactory:
         Get Korean stock data service (always free with KIS account)
 
         Returns:
-            KISService
+            KISService or None if credentials are missing
         """
-        from .kis_service import KISService
-
-        logger.info("Using KIS service for Korean stock data")
-        return KISService()
+        try:
+            from .kis_service import KISService
+            logger.info("Using KIS service for Korean stock data")
+            return KISService()
+        except Exception as e:
+            logger.warning(f"KIS service unavailable (missing credentials?): {e}")
+            return None
 
     @staticmethod
     def get_service_status() -> dict:
