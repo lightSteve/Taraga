@@ -169,7 +169,10 @@ def fetch_movers_direct():
                 cur = float(df["Close"].iloc[-1])
                 prev = float(df["Close"].iloc[-2])
                 cp = ((cur - prev) / prev) * 100 if prev > 0 else 0
-                results.append({"ticker": t, "name": t, "price": cur, "change_percent": round(cp, 2)})
+                vol = int(df["Volume"].iloc[-1]) if "Volume" in df.columns else 0
+                prev_vol = int(df["Volume"].iloc[-2]) if "Volume" in df.columns and len(df) >= 2 else 0
+                vol_change = ((vol - prev_vol) / prev_vol * 100) if prev_vol > 0 else 0
+                results.append({"ticker": t, "name": t, "price": cur, "change_percent": round(cp, 2), "volume": vol, "volume_change": round(vol_change, 1)})
             except Exception:
                 continue
 
@@ -213,7 +216,10 @@ def fetch_kr_movers_direct():
                 cur = float(df["Close"].iloc[-1])
                 prev = float(df["Close"].iloc[-2])
                 cp = ((cur - prev) / prev) * 100 if prev > 0 else 0
-                results.append({"ticker": t.replace(".KS", ""), "name": name, "price": cur, "change_percent": round(cp, 2)})
+                vol = int(df["Volume"].iloc[-1]) if "Volume" in df.columns else 0
+                prev_vol = int(df["Volume"].iloc[-2]) if "Volume" in df.columns and len(df) >= 2 else 0
+                vol_change = ((vol - prev_vol) / prev_vol * 100) if prev_vol > 0 else 0
+                results.append({"ticker": t.replace(".KS", ""), "name": name, "price": cur, "change_percent": round(cp, 2), "volume": vol, "volume_change": round(vol_change, 1)})
             except Exception:
                 continue
 
@@ -255,7 +261,10 @@ def fetch_coin_movers_direct():
                 cur = float(df["Close"].iloc[-1])
                 prev = float(df["Close"].iloc[-2])
                 cp = ((cur - prev) / prev) * 100 if prev > 0 else 0
-                results.append({"ticker": t.replace("-USD", ""), "name": name, "price": cur, "change_percent": round(cp, 2)})
+                vol = int(df["Volume"].iloc[-1]) if "Volume" in df.columns else 0
+                prev_vol = int(df["Volume"].iloc[-2]) if "Volume" in df.columns and len(df) >= 2 else 0
+                vol_change = ((vol - prev_vol) / prev_vol * 100) if prev_vol > 0 else 0
+                results.append({"ticker": t.replace("-USD", ""), "name": name, "price": cur, "change_percent": round(cp, 2), "volume": vol, "volume_change": round(vol_change, 1)})
             except Exception:
                 continue
 
@@ -520,6 +529,15 @@ if page == "📊 글로벌 시장":
     }
     st.markdown(f'<p class="section-title">{movers_title_map[selected_market]}</p>', unsafe_allow_html=True)
 
+    # ── 필터 조건 ──
+    filter_col1, filter_col2, filter_col3 = st.columns(3)
+    with filter_col1:
+        min_change = st.slider("최소 등락률 (%)", min_value=0.0, max_value=20.0, value=0.0, step=0.5, key="min_change_filter")
+    with filter_col2:
+        min_vol_change = st.slider("최소 거래량 변화율 (%)", min_value=0.0, max_value=500.0, value=0.0, step=10.0, key="min_vol_filter")
+    with filter_col3:
+        sort_by = st.selectbox("정렬 기준", ["등락률", "거래량 변화율"], key="sort_filter")
+
     # 데이터 가져오기 — 시장별 분기
     gainers_data = None
     losers_data = None
@@ -543,13 +561,47 @@ if page == "📊 글로벌 시장":
         gainers_data = {"data": g_list}
         losers_data = {"data": l_list}
 
+    # ── 필터 + 정렬 적용 함수 ──
+    def _apply_filters(items, is_gainer=True):
+        filtered = []
+        for s in items:
+            cp = abs(s.get("change_percent", 0))
+            vc = abs(s.get("volume_change", 0))
+            if cp >= min_change and vc >= min_vol_change:
+                filtered.append(s)
+        if sort_by == "거래량 변화율":
+            filtered.sort(key=lambda x: abs(x.get("volume_change", 0)), reverse=True)
+        else:
+            filtered.sort(key=lambda x: abs(x.get("change_percent", 0)), reverse=True)
+        return filtered
+
+    def _format_volume(vol):
+        if vol >= 1_000_000_000:
+            return f"{vol / 1_000_000_000:.1f}B"
+        elif vol >= 1_000_000:
+            return f"{vol / 1_000_000:.1f}M"
+        elif vol >= 1_000:
+            return f"{vol / 1_000:.0f}K"
+        return str(vol)
+
     g_tab, l_tab = st.tabs(["🚀 급등 종목", "📉 급락 종목"])
 
     with g_tab:
         gainers = gainers_data.get("data", []) if gainers_data else []
+        gainers = _apply_filters(gainers, is_gainer=True)
         if gainers:
+            # Header
+            hc1, hc2, hc3, hc4 = st.columns([1, 3, 2, 2])
+            with hc1:
+                st.caption("#")
+            with hc2:
+                st.caption("종목")
+            with hc3:
+                st.caption("등락률")
+            with hc4:
+                st.caption("거래량 (변화율)")
             for i, stock in enumerate(gainers):
-                col1, col2, col3 = st.columns([1, 4, 2])
+                col1, col2, col3, col4 = st.columns([1, 3, 2, 2])
                 with col1:
                     st.markdown(f"**{i+1}**")
                 with col2:
@@ -557,14 +609,31 @@ if page == "📊 글로벌 시장":
                 with col3:
                     cp = stock.get("change_percent", 0)
                     st.markdown(f'<span class="metric-up">+{cp:.2f}%</span>', unsafe_allow_html=True)
+                with col4:
+                    vol = stock.get("volume", 0)
+                    vc = stock.get("volume_change", 0)
+                    vc_color = "#FF5247" if vc > 50 else "#00C073" if vc > 0 else "#8B95A1"
+                    vol_str = _format_volume(vol) if vol else "—"
+                    vc_str = f"+{vc:.0f}%" if vc >= 0 else f"{vc:.0f}%"
+                    st.markdown(f'{vol_str} <span style="color:{vc_color};font-weight:600">({vc_str})</span>', unsafe_allow_html=True)
         else:
-            st.info("급등 종목 데이터가 없습니다.")
+            st.info("필터 조건에 맞는 급등 종목이 없습니다.")
 
     with l_tab:
         losers = losers_data.get("data", []) if losers_data else []
+        losers = _apply_filters(losers, is_gainer=False)
         if losers:
+            hc1, hc2, hc3, hc4 = st.columns([1, 3, 2, 2])
+            with hc1:
+                st.caption("#")
+            with hc2:
+                st.caption("종목")
+            with hc3:
+                st.caption("등락률")
+            with hc4:
+                st.caption("거래량 (변화율)")
             for i, stock in enumerate(losers):
-                col1, col2, col3 = st.columns([1, 4, 2])
+                col1, col2, col3, col4 = st.columns([1, 3, 2, 2])
                 with col1:
                     st.markdown(f"**{i+1}**")
                 with col2:
@@ -572,8 +641,15 @@ if page == "📊 글로벌 시장":
                 with col3:
                     cp = stock.get("change_percent", 0)
                     st.markdown(f'<span class="metric-down">{cp:.2f}%</span>', unsafe_allow_html=True)
+                with col4:
+                    vol = stock.get("volume", 0)
+                    vc = stock.get("volume_change", 0)
+                    vc_color = "#FF5247" if vc > 50 else "#00C073" if vc > 0 else "#8B95A1"
+                    vol_str = _format_volume(vol) if vol else "—"
+                    vc_str = f"+{vc:.0f}%" if vc >= 0 else f"{vc:.0f}%"
+                    st.markdown(f'{vol_str} <span style="color:{vc_color};font-weight:600">({vc_str})</span>', unsafe_allow_html=True)
         else:
-            st.info("급락 종목 데이터가 없습니다.")
+            st.info("필터 조건에 맞는 급락 종목이 없습니다.")
 
     st.divider()
 
