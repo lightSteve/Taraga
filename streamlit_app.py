@@ -504,6 +504,34 @@ def _fetch_calendar_direct(year: int, month: int):
         return None
 
 
+@st.cache_data(ttl=1800, show_spinner="스마트 스코어 분석 중...")
+def fetch_smart_scores(market: str = "KR"):
+    """Smart Score 엔진으로 종목 스캔 및 스코어링"""
+    try:
+        from logic.smart_score import scan_and_score
+
+        if market == "KR":
+            tickers = [
+                "005930.KS", "000660.KS", "373220.KS", "207940.KS",
+                "005380.KS", "006400.KS", "051910.KS", "035420.KS",
+                "035720.KS", "068270.KS", "105560.KS", "055550.KS",
+                "000270.KS", "012330.KS", "066570.KS", "003670.KS",
+                "015760.KS", "009150.KS", "247540.KS", "086520.KS",
+                "003550.KS", "028260.KS", "017670.KS", "030200.KS",
+            ]
+        else:
+            tickers = [
+                "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+                "JPM", "V", "WMT", "UNH", "JNJ", "HD", "PG", "MA",
+                "XOM", "CVX", "KO", "PEP", "COST", "AVGO", "LLY",
+                "AMD", "NFLX", "INTC", "BA", "CRM", "ORCL", "QCOM", "ADBE",
+            ]
+
+        return scan_and_score(tickers, market=market)
+    except Exception:
+        return []
+
+
 # ─── Custom CSS ───
 st.markdown("""
 <style>
@@ -570,13 +598,13 @@ with st.sidebar:
     if server_up:
         page = st.radio(
             "페이지 선택",
-            ["📊 글로벌 시장", "📋 브리핑", "🔥 테마", "💡 인사이트", "📅 캘린더", "⭐ 관심종목", "📈 종목 상세", "⚙️ 시스템"],
+            ["📊 글로벌 시장", "📋 브리핑", "🔥 테마", "💡 인사이트", "🎯 스마트 스코어", "📅 캘린더", "⭐ 관심종목", "📈 종목 상세", "⚙️ 시스템"],
             label_visibility="collapsed",
         )
     else:
         page = st.radio(
             "페이지 선택",
-            ["📊 글로벌 시장", "📅 캘린더", "📈 종목 상세"],
+            ["📊 글로벌 시장", "🎯 스마트 스코어", "📅 캘린더", "📈 종목 상세"],
             label_visibility="collapsed",
         )
         st.caption("서버 연결 시 브리핑, 테마, 인사이트 등 이용 가능")
@@ -1555,3 +1583,199 @@ elif page == "📈 종목 상세":
                 st.markdown(desc[:500] + ("..." if len(desc) > 500 else ""))
         else:
             st.warning(f"'{ticker_input}' 종목 데이터를 찾을 수 없습니다.")
+
+
+# ═══════════════════════════════════════════
+# 🎯 스마트 스코어
+# ═══════════════════════════════════════════
+elif page == "🎯 스마트 스코어":
+    st.markdown('<p class="main-header">🎯 스마트 스코어</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">다중 팩터 분석으로 수급 이상 종목을 찾아냅니다. (기관 매집 40% + 모멘텀 30% + 거래량 폭증 30%)</p>', unsafe_allow_html=True)
+    st.divider()
+
+    # 시장 선택
+    ss_market_label = st.radio(
+        "분석 시장",
+        ["🇰🇷 한국", "🇺🇸 미국"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="ss_market",
+    )
+    ss_market = "KR" if "한국" in ss_market_label else "US"
+
+    with st.spinner("종목 스캔 중... (20~30개 종목 분석)"):
+        scored = fetch_smart_scores(market=ss_market)
+
+    if not scored:
+        st.warning("스코어 데이터를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.")
+    else:
+        # ── Top 3 카드 ──
+        top3 = scored[:3]
+        st.markdown(f'<p class="section-title">🏆 Top 3 종목</p>', unsafe_allow_html=True)
+
+        cols = st.columns(3)
+        medal = ["🥇", "🥈", "🥉"]
+        for i, s in enumerate(top3):
+            with cols[i]:
+                sc = s["score"]
+                sc_color = "#FF5247" if sc >= 70 else "#FF9F43" if sc >= 50 else "#8B95A1"
+                chg = s["change_percent"]
+                chg_color = "#FF5247" if chg >= 0 else "#3182F6"
+                chg_str = f"+{chg:.2f}%" if chg >= 0 else f"{chg:.2f}%"
+                anomaly_badge = '  <span style="background:#7C5CFC;color:white;padding:2px 8px;border-radius:8px;font-size:0.75rem">⚡ Anomaly</span>' if s["is_anomaly"] else ""
+
+                st.markdown(f"""
+                <div style="background:#FFFFFF;border:2px solid {sc_color};border-radius:16px;padding:1.2rem;text-align:center">
+                    <div style="font-size:1.8rem">{medal[i]}</div>
+                    <div style="font-size:1.1rem;font-weight:700;color:#191F28;margin:4px 0">{s['name']}</div>
+                    <div style="font-size:0.85rem;color:#8B95A1">{s['ticker']}</div>
+                    <div style="font-size:2.2rem;font-weight:800;color:{sc_color};margin:8px 0">{sc}</div>
+                    <div style="font-size:0.8rem;color:#8B95A1">Smart Score</div>
+                    <div style="margin-top:8px">
+                        <span style="color:{chg_color};font-weight:700;font-size:1rem">{chg_str}</span>
+                    </div>
+                    <div style="margin-top:6px;font-size:0.8rem;color:#8B95A1">
+                        기관매집 {s['inst_score']:.0f} · 모멘텀 {s['momentum_score']:.0f} · 거래량 {s['volume_score']:.0f}
+                    </div>
+                    {f'<div style="margin-top:6px">{anomaly_badge}</div>' if anomaly_badge else ''}
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.divider()
+
+        # ── 수급 추이 차트 (Top 3) ──
+        st.markdown(f'<p class="section-title">📊 Top 3 수급 추이</p>', unsafe_allow_html=True)
+
+        for s in top3:
+            with st.expander(f"{s['name']} ({s['ticker']}) — Score: {s['score']}", expanded=True):
+                chart_col1, chart_col2 = st.columns(2)
+
+                dates = s.get("dates", [])
+                vol_hist = s.get("volume_history", [])
+                price_hist = s.get("price_history", [])
+
+                with chart_col1:
+                    # 거래량 차트
+                    if vol_hist and dates:
+                        fig_vol = go.Figure()
+                        colors = ["#3182F6" if i < len(vol_hist) - 3 else "#FF5247" for i in range(len(vol_hist))]
+                        fig_vol.add_trace(go.Bar(
+                            x=dates[-len(vol_hist):],
+                            y=vol_hist,
+                            marker_color=colors,
+                            name="거래량",
+                        ))
+                        # 20일 평균선
+                        if len(vol_hist) >= 5:
+                            import numpy as np
+                            avg_line = [np.mean(vol_hist)] * len(vol_hist)
+                            fig_vol.add_trace(go.Scatter(
+                                x=dates[-len(vol_hist):],
+                                y=avg_line,
+                                mode="lines",
+                                line=dict(color="#FF9F43", width=2, dash="dash"),
+                                name="평균 거래량",
+                            ))
+                        fig_vol.update_layout(
+                            title=dict(text="거래량 추이", font=dict(size=14)),
+                            height=280,
+                            margin=dict(l=10, r=10, t=40, b=10),
+                            showlegend=True,
+                            legend=dict(orientation="h", y=-0.15),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                        )
+                        fig_vol.update_yaxes(gridcolor="#E5E8EB")
+                        st.plotly_chart(fig_vol, use_container_width=True, key=f"vol_{s['ticker']}")
+
+                with chart_col2:
+                    # 가격 + VWAP + MA5 차트
+                    if price_hist and dates:
+                        fig_price = go.Figure()
+                        fig_price.add_trace(go.Scatter(
+                            x=dates[-len(price_hist):],
+                            y=price_hist,
+                            mode="lines+markers",
+                            line=dict(color="#191F28", width=2),
+                            marker=dict(size=4),
+                            name="종가",
+                        ))
+                        if s.get("vwap"):
+                            fig_price.add_hline(
+                                y=s["vwap"], line_dash="dash",
+                                line_color="#7C5CFC", line_width=1.5,
+                                annotation_text=f"VWAP {s['vwap']}",
+                                annotation_position="top right",
+                            )
+                        if s.get("ma5"):
+                            fig_price.add_hline(
+                                y=s["ma5"], line_dash="dot",
+                                line_color="#00C073", line_width=1.5,
+                                annotation_text=f"MA5 {s['ma5']}",
+                                annotation_position="bottom right",
+                            )
+                        fig_price.update_layout(
+                            title=dict(text="가격 · VWAP · MA5", font=dict(size=14)),
+                            height=280,
+                            margin=dict(l=10, r=10, t=40, b=10),
+                            showlegend=True,
+                            legend=dict(orientation="h", y=-0.15),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                        )
+                        fig_price.update_yaxes(gridcolor="#E5E8EB")
+                        st.plotly_chart(fig_price, use_container_width=True, key=f"price_{s['ticker']}")
+
+                # 이상 징후 설명
+                if s["is_anomaly"]:
+                    st.warning(f"⚡ **Anomaly 감지** — {s['anomaly_reason']}")
+
+        st.divider()
+
+        # ── Anomaly 종목 섹션 ──
+        anomalies = [s for s in scored if s["is_anomaly"]]
+        if anomalies:
+            st.markdown(f'<p class="section-title">⚡ 소외주 반등 감지 (Anomaly)</p>', unsafe_allow_html=True)
+            st.caption("최근 10거래일간 거래량이 극히 낮다가 갑자기 수급이 유입된 종목입니다.")
+            for a in anomalies:
+                ac1, ac2, ac3, ac4 = st.columns([3, 2, 2, 3])
+                with ac1:
+                    st.markdown(f"**{a['name']}** ({a['ticker']})")
+                with ac2:
+                    chg = a['change_percent']
+                    color = "#FF5247" if chg >= 0 else "#3182F6"
+                    st.markdown(f'<span style="color:{color};font-weight:700">{("+" if chg >= 0 else "")}{chg:.2f}%</span>', unsafe_allow_html=True)
+                with ac3:
+                    st.markdown(f"Score: **{a['score']}**")
+                with ac4:
+                    st.caption(a["anomaly_reason"])
+            st.divider()
+
+        # ── 전체 순위 테이블 ──
+        st.markdown(f'<p class="section-title">📋 전체 종목 스코어 순위</p>', unsafe_allow_html=True)
+        for idx, s in enumerate(scored):
+            rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([0.5, 2.5, 1.5, 1.5, 1.5, 1.5])
+            with rc1:
+                st.markdown(f"**{idx+1}**")
+            with rc2:
+                anomaly_mark = " ⚡" if s["is_anomaly"] else ""
+                st.markdown(f"**{s['name']}**{anomaly_mark}")
+            with rc3:
+                sc = s['score']
+                sc_color = "#FF5247" if sc >= 70 else "#FF9F43" if sc >= 50 else "#8B95A1"
+                st.markdown(f'<span style="color:{sc_color};font-weight:800;font-size:1.1rem">{sc}</span>', unsafe_allow_html=True)
+            with rc4:
+                st.caption(f"기관 {s['inst_score']:.0f}")
+            with rc5:
+                st.caption(f"모멘텀 {s['momentum_score']:.0f}")
+            with rc6:
+                st.caption(f"거래량 {s['volume_score']:.0f}")
+
+        st.divider()
+        st.caption("""
+        **스코어링 기준 안내**
+        - 🏦 **기관 매집 (40%)**: 최근 3일간 양봉 + 거래량 증가 동반 시 기관/외인 매집으로 추정
+        - 📈 **모멘텀 (30%)**: VWAP(거래량 가중 평균가) 돌파 여부 + 5일 이동평균선 이격도
+        - 📊 **거래량 폭증 (30%)**: 20일 평균 대비 당일 거래량 비율
+        - ⚡ **Anomaly**: 10거래일 중 전반부 소외 → 후반부 수급 급증 패턴 감지 시 보너스 +10점
+        """)
