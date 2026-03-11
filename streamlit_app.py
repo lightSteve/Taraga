@@ -292,40 +292,52 @@ def get_color(val):
 
 
 @st.cache_data(ttl=1800)
-def fetch_sector_data():
-    """섹터별 ETF 데이터로 히트맵용 데이터 생성"""
+def fetch_sector_data(market="US"):
+    """섹터별 ETF 데이터로 히트맵용 데이터 생성 (US/KR 지원)"""
     try:
         import yfinance as yf
+        import pandas as pd
 
-        sector_etfs = {
-            "XLK": ("IT/기술", "Technology"),
-            "XLV": ("헬스케어", "Healthcare"),
-            "XLF": ("금융", "Financials"),
-            "XLY": ("경기소비재", "Consumer Discretionary"),
-            "XLP": ("필수소비재", "Consumer Staples"),
-            "XLE": ("에너지", "Energy"),
-            "XLI": ("산업재", "Industrials"),
-            "XLB": ("소재", "Materials"),
-            "XLU": ("유틸리티", "Utilities"),
-            "XLRE": ("부동산", "Real Estate"),
-            "XLC": ("통신서비스", "Communication Services"),
-        }
+        if market == "KR":
+            sector_etfs = {
+                "091160.KS": ("IT/반도체", "IT/Semiconductor", 22),
+                "091170.KS": ("자동차", "Automobile", 10),
+                "091180.KS": ("헬스케어", "Healthcare", 8),
+                "091220.KS": ("화학", "Chemicals", 7),
+                "091230.KS": ("철강", "Steel", 4),
+                "140700.KS": ("에너지", "Energy", 5),
+                "140710.KS": ("금융", "Financials", 12),
+                "098560.KS": ("미디어/통신", "Media/Telecom", 6),
+                "117700.KS": ("건설", "Construction", 5),
+                "117680.KS": ("산업재", "Industrials", 7),
+                "266390.KS": ("2차전지", "Battery", 8),
+                "305720.KS": ("필수소비재", "Consumer Staples", 6),
+            }
+        else:
+            sector_etfs = {
+                "XLK": ("IT/기술", "Technology", 30),
+                "XLV": ("헬스케어", "Healthcare", 13),
+                "XLF": ("금융", "Financials", 12),
+                "XLY": ("경기소비재", "Cons. Disc.", 10),
+                "XLP": ("필수소비재", "Cons. Staples", 7),
+                "XLE": ("에너지", "Energy", 4),
+                "XLI": ("산업재", "Industrials", 9),
+                "XLB": ("소재", "Materials", 3),
+                "XLU": ("유틸리티", "Utilities", 3),
+                "XLRE": ("부동산", "Real Estate", 3),
+                "XLC": ("통신서비스", "Comm. Services", 9),
+            }
 
         tickers_str = " ".join(sector_etfs.keys())
         data = yf.download(tickers_str, period="5d", group_by="ticker", progress=False, threads=False)
         if data is None or data.empty:
-            return []
-
-        # 시가총액 근사치 (AUM 기준, 2026년 대략적 비중)
-        sector_weights = {
-            "XLK": 30, "XLV": 13, "XLF": 12, "XLY": 10, "XLP": 7,
-            "XLE": 4, "XLI": 9, "XLB": 3, "XLU": 3, "XLRE": 3, "XLC": 9,
-        }
+            return [], None
 
         results = []
-        for ticker, (kr_name, en_name) in sector_etfs.items():
+        data_date = None
+
+        for ticker, (kr_name, en_name, weight) in sector_etfs.items():
             try:
-                import pandas as pd
                 if isinstance(data.columns, pd.MultiIndex):
                     if ticker in data.columns.get_level_values(0):
                         df = data[ticker]
@@ -340,10 +352,17 @@ def fetch_sector_data():
                 if len(df) < 2:
                     continue
 
+                # 데이터 기준일 추출
+                if data_date is None:
+                    last_idx = df.index[-1]
+                    if hasattr(last_idx, 'strftime'):
+                        data_date = last_idx.strftime("%Y-%m-%d")
+                    else:
+                        data_date = str(last_idx)[:10]
+
                 cur = float(df["Close"].iloc[-1])
                 prev = float(df["Close"].iloc[-2])
                 cp = ((cur - prev) / prev) * 100 if prev > 0 else 0
-                weight = sector_weights.get(ticker, 3)
 
                 results.append({
                     "ticker": ticker,
@@ -356,9 +375,9 @@ def fetch_sector_data():
             except Exception:
                 continue
 
-        return results
+        return results, data_date
     except Exception:
-        return []
+        return [], None
 
 
 @st.cache_data(ttl=21600)
@@ -591,13 +610,18 @@ if page == "📊 글로벌 시장":
 
     st.divider()
 
-    # ═══ 섹터 히트맵 (US 시장일 때만) ═══
-    if selected_market == "US":
-        st.markdown('<p class="section-title">🗺️ 섹터 히트맵</p>', unsafe_allow_html=True)
-        st.caption("S&P 500 섹터 ETF 기반 — 박스 크기 = 시가총액 비중, 색상 = 등락률")
+    # ═══ 섹터 히트맵 (US, KR) ═══
+    if selected_market in ("US", "KR"):
+        market_label = {"US": "🇺🇸 미국", "KR": "🇰🇷 한국"}[selected_market]
+        etf_label = {"US": "S&P 500 섹터 ETF", "KR": "KODEX 섹터 ETF"}[selected_market]
+        st.markdown(f'<p class="section-title">🗺️ {market_label} 섹터 히트맵</p>', unsafe_allow_html=True)
 
-        sector_data = fetch_sector_data()
+        sector_data, data_date = fetch_sector_data(market=selected_market)
         if sector_data:
+            # 데이터 기준일 표시
+            date_str = data_date if data_date else "알 수 없음"
+            st.caption(f"📅 기준일: **{date_str}** | {etf_label} 기반 — 박스 크기 = 시가총액 비중, 색상 = 전일 대비 등락률")
+
             labels = []
             parents = []
             values = []
@@ -611,7 +635,7 @@ if page == "📊 글로벌 시장":
                 colors.append(s["change_percent"])
                 cp = s["change_percent"]
                 sign = "+" if cp >= 0 else ""
-                text_labels.append(f"{s['sector_kr']}<br>{sign}{cp:.2f}%")
+                text_labels.append(f"{s['sector_kr']}<br>{sign}{cp:.2f}%<br><span style='font-size:10px'>{s['ticker']}</span>")
 
             fig = go.Figure(go.Treemap(
                 labels=labels,
@@ -636,14 +660,32 @@ if page == "📊 글로벌 시장":
                 text=text_labels,
                 textinfo="text",
                 textfont=dict(size=14),
-                hovertemplate="<b>%{label}</b><br>등락률: %{color:.2f}%<br>비중: %{value}%<extra></extra>",
+                hovertemplate=(
+                    "<b>%{label}</b><br>"
+                    f"기준일: {date_str}<br>"
+                    "등락률: %{color:.2f}%<br>"
+                    "비중: %{value}%<extra></extra>"
+                ),
             ))
             fig.update_layout(
-                height=400,
+                height=420,
                 margin=dict(l=10, r=10, t=10, b=10),
                 paper_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(fig, use_container_width=True, key="sector_heatmap")
+            st.plotly_chart(fig, use_container_width=True, key=f"sector_heatmap_{selected_market}")
+
+            # 요약 테이블
+            with st.expander("📊 섹터별 상세 데이터"):
+                sorted_sectors = sorted(sector_data, key=lambda x: x["change_percent"], reverse=True)
+                for s in sorted_sectors:
+                    cp = s["change_percent"]
+                    color = "#FF5247" if cp >= 0 else "#3182F6"
+                    sign = "+" if cp >= 0 else ""
+                    st.markdown(
+                        f"<span style='color:{color};font-weight:700'>{sign}{cp:.2f}%</span> "
+                        f"**{s['sector_kr']}** ({s['ticker']}) — 비중 {s['weight']}%, 가격 {s['price']:,.2f}",
+                        unsafe_allow_html=True,
+                    )
         else:
             st.info("섹터 데이터를 불러올 수 없습니다.")
 
