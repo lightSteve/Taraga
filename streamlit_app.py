@@ -291,6 +291,76 @@ def get_color(val):
     return "#FF5247" if val >= 0 else "#3182F6"
 
 
+@st.cache_data(ttl=1800)
+def fetch_sector_data():
+    """섹터별 ETF 데이터로 히트맵용 데이터 생성"""
+    try:
+        import yfinance as yf
+
+        sector_etfs = {
+            "XLK": ("IT/기술", "Technology"),
+            "XLV": ("헬스케어", "Healthcare"),
+            "XLF": ("금융", "Financials"),
+            "XLY": ("경기소비재", "Consumer Discretionary"),
+            "XLP": ("필수소비재", "Consumer Staples"),
+            "XLE": ("에너지", "Energy"),
+            "XLI": ("산업재", "Industrials"),
+            "XLB": ("소재", "Materials"),
+            "XLU": ("유틸리티", "Utilities"),
+            "XLRE": ("부동산", "Real Estate"),
+            "XLC": ("통신서비스", "Communication Services"),
+        }
+
+        tickers_str = " ".join(sector_etfs.keys())
+        data = yf.download(tickers_str, period="5d", group_by="ticker", progress=False, threads=False)
+        if data is None or data.empty:
+            return []
+
+        # 시가총액 근사치 (AUM 기준, 2026년 대략적 비중)
+        sector_weights = {
+            "XLK": 30, "XLV": 13, "XLF": 12, "XLY": 10, "XLP": 7,
+            "XLE": 4, "XLI": 9, "XLB": 3, "XLU": 3, "XLRE": 3, "XLC": 9,
+        }
+
+        results = []
+        for ticker, (kr_name, en_name) in sector_etfs.items():
+            try:
+                import pandas as pd
+                if isinstance(data.columns, pd.MultiIndex):
+                    if ticker in data.columns.get_level_values(0):
+                        df = data[ticker]
+                    elif ticker in data.columns.get_level_values(1):
+                        df = data.xs(ticker, axis=1, level=1)
+                    else:
+                        continue
+                else:
+                    continue
+
+                df = df.dropna(subset=["Close"])
+                if len(df) < 2:
+                    continue
+
+                cur = float(df["Close"].iloc[-1])
+                prev = float(df["Close"].iloc[-2])
+                cp = ((cur - prev) / prev) * 100 if prev > 0 else 0
+                weight = sector_weights.get(ticker, 3)
+
+                results.append({
+                    "ticker": ticker,
+                    "sector_kr": kr_name,
+                    "sector_en": en_name,
+                    "change_percent": round(cp, 2),
+                    "weight": weight,
+                    "price": round(cur, 2),
+                })
+            except Exception:
+                continue
+
+        return results
+    except Exception:
+        return []
+
+
 @st.cache_data(ttl=21600)
 def _fetch_calendar_direct(year: int, month: int):
     """백엔드 없이 yfinance에서 직접 실적 캘린더 가져오기 (Standalone)"""
@@ -520,6 +590,64 @@ if page == "📊 글로벌 시장":
         selected_market = "US"
 
     st.divider()
+
+    # ═══ 섹터 히트맵 (US 시장일 때만) ═══
+    if selected_market == "US":
+        st.markdown('<p class="section-title">🗺️ 섹터 히트맵</p>', unsafe_allow_html=True)
+        st.caption("S&P 500 섹터 ETF 기반 — 박스 크기 = 시가총액 비중, 색상 = 등락률")
+
+        sector_data = fetch_sector_data()
+        if sector_data:
+            labels = []
+            parents = []
+            values = []
+            colors = []
+            text_labels = []
+
+            for s in sector_data:
+                labels.append(s["sector_kr"])
+                parents.append("")
+                values.append(s["weight"])
+                colors.append(s["change_percent"])
+                cp = s["change_percent"]
+                sign = "+" if cp >= 0 else ""
+                text_labels.append(f"{s['sector_kr']}<br>{sign}{cp:.2f}%")
+
+            fig = go.Figure(go.Treemap(
+                labels=labels,
+                parents=parents,
+                values=values,
+                marker=dict(
+                    colors=colors,
+                    colorscale=[
+                        [0, "#3182F6"],
+                        [0.35, "#93B5F6"],
+                        [0.5, "#E5E8EB"],
+                        [0.65, "#F5A0A0"],
+                        [1, "#FF5247"],
+                    ],
+                    cmid=0,
+                    colorbar=dict(
+                        title="등락률(%)",
+                        ticksuffix="%",
+                        len=0.6,
+                    ),
+                ),
+                text=text_labels,
+                textinfo="text",
+                textfont=dict(size=14),
+                hovertemplate="<b>%{label}</b><br>등락률: %{color:.2f}%<br>비중: %{value}%<extra></extra>",
+            ))
+            fig.update_layout(
+                height=400,
+                margin=dict(l=10, r=10, t=10, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig, use_container_width=True, key="sector_heatmap")
+        else:
+            st.info("섹터 데이터를 불러올 수 없습니다.")
+
+        st.divider()
 
     # ═══ 2. 시장 급등락 (시장별) ═══
     movers_title_map = {
